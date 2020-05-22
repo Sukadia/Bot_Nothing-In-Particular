@@ -2,7 +2,7 @@
 
 --Need to get rid of dmuserlist, it's a built in channel.recipient
 
-local token = "NjY5NzQ3NzEzNDQ0OTM3NzM4.Xp5_gA.jA6kdBrbh0tiD9Yv5_LTQ6wjpL4"
+local token = "RealTokenHere"
 local serverid = "669338665956409374"
 
 local discordia = require("discordia")
@@ -45,6 +45,11 @@ function dump(o) --Decode tables into printable format, returns string
    end
 end
 
+function round(num, numDecimalPlaces) --Round numbers to a decimal, returns number
+    local mult = 10^(numDecimalPlaces or 0)
+    return math.floor(num * mult + 0.5) / mult
+end
+
 function checkWhitelist(word) --Checks if word is in whitelist, returns true or false
     for i, whitelistword in pairs(whitelistedwords) do
         if whitelistword == word then
@@ -79,13 +84,14 @@ function channelPermsEdit(channel,permtype,userid) --Changes channel perms for @
     perms:clearAllPermissions()
     if permtype == "readchannel" then
         perms:allowPermissions(Enum.permission.readMessageHistory,Enum.permission.readMessages)
-        perms:denyPermissions(Enum.permission.sendMessages)
     elseif permtype == "messagechannel" then
         if userid == nil then
             perms:allowPermissions(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages)
         else
             perms:delete()
         end
+    elseif permtype == "imagechannel" then
+        perms:allowPermissions(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages,Enum.permission.attachFiles)
     elseif permtype == "noaccess" then
         perms:denyPermissions(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages)
     end
@@ -102,7 +108,7 @@ end
 function defineWord(word) --Calls the Merriam-Webster dictionary API, returns string
     local definition = ""
     if definitionlog[word] == nil then
-        result, body = Coro.request("GET","https://dictionaryapi.com/api/v3/references/collegiate/json/"..word.."?key=ActualKeyisHere")
+        result, body = Coro.request("GET","https://dictionaryapi.com/api/v3/references/collegiate/json/"..word.."?key=RealKeyHere")
         local table = Json.decode(body)
         if table[1]["shortdef"] ~= nil then
             for i, def in pairs(table[1]["shortdef"]) do
@@ -230,6 +236,7 @@ client:on("ready", function()
     data = Storage:getTable()
     MessageChannel = server:getChannel("702348672007929888")
     BlacklistChannel = server:getChannel("707724715141365820")
+    ImageChannel = server:getChannel("713449279548817560")
     CapitalistChannel = server:getChannel("708147170628599830")
     
     local bypass = false
@@ -422,7 +429,7 @@ client:on("ready", function()
                             if command == "server" then
                                 send(channel,"Welcome to Sukadia's server!\n\nI'm the bot that runs everything, the server is effectively closed when I'm down during nighttime and testing.\n\nSukadia updates the bot pretty often, and pings @here for new bot features and certain polls. I'd recommend suppressing/muting these pings if you aren't interested.\n\nThe #important channel is basically the only way to get active information on stuff, other than DMing Sukadia himself. Speaking of which, if you have a bot idea you can anonymously send to to Sukadia via the `idea` command.\n\n**Type another keyword or `exit` to continue.**")
                             elseif command == "commands" then
-                                send(channel,"Here's all the commands you can DM me:\n\n`wordlist [letters]` Gives you all the whitelisted words. If letters are provided, lists all words which start with them.\n`suggest (word)` Adds a word to the user-submission lineup to be randomly chosen every three hours.\n`worduse [word]` Lists the top 10 most used words. If a word is provided, lists how many times that word has been used.\n`define (word)` Gives you all of the definitions of the whitelisted word from the Merriam-Webster dictionary.\n\n`idea` Allows you to send an anonymous message to Sukadia with an idea or anything similar.\n\n**Type another keyword or `exit` to continue.**")   
+                                send(channel,"Here's all the commands you can DM me:\n\n`wordlist [letters]` Gives you all the whitelisted words. If letters are provided, lists all words which start with them.\n`suggest (word)` Adds a word to the user-submission lineup to be randomly chosen every three hours.\n`worduse [word]` Lists the top 10 most used words. If a word is provided, lists how many times that word has been used.\n`define (word)` Gives you all of the definitions of the whitelisted word from the Merriam-Webster dictionary.\n\n`filesize` Gives you the size of the bot's savedata file.\n`idea` Allows you to send an anonymous message to Sukadia with an idea or anything similar.\n\n**Type another keyword or `exit` to continue.**")   
                             elseif command == "whitelist" then
                                 send(channel,"The whitelist channel is somewhat basic, but is the main channel of the server.\n\nNow the obvious is that you can't say any word outside of the whitelist. However, you can suggest a word to be whitelisted if randomly chosen by using the `suggest (word)` command.\n\nThe channel works on a schedule, every 3 hours the bot picks three words and two user-suggested words randomly and adds them to the whitelist. Also, near the middle of each hour there's a chance for a special event to happen that'll give you an ability.\n\nThere isn't very much other than that, check the `commands` keyword to see what you can do with the whitelist.\n\n**Type another keyword or `exit` to continue.**")
                             elseif command == "blacklist" then
@@ -482,6 +489,18 @@ client:on("ready", function()
                         break
                     end
                 end
+            
+            elseif messagewords[1] == "filesize" then
+                local savedata = io.open("savedata", "r")
+                local size = savedata:seek("end")
+                local datatype = " B"
+                if size > 1000 then
+                    size = size/1000
+                    datatype = " KB"
+                end
+                size = round(size,3)
+                send(channel,"It looks like the savedata file size right now is "..size..datatype..".")
+                io.close(savedata)
                 
             --Unknown command, sends a staring pikachu instead- unless you're in the idea submission or muted
             else
@@ -575,10 +594,27 @@ client:on("ready", function()
                     Storage:saveTable(data)
                     message:delete()
                     send(channel,"A word has been manually whitelisted: **"..messagewords[2].."**.")
+                    return
+                elseif messagewords[1] == "openserver" then
+                    message:delete()
+                    channelPermsEdit(MessageChannel,"messagechannel")
+                    channelPermsEdit(BlacklistChannel,"messagechannel")
+                    channelPermsEdit(ImageChannel,"messagechannel")
+                    send(channel,"Server Reopened")
+                    return
+                elseif messagewords[1] == "closeserver" then
+                    message:delete()
+                    channelPermsEdit(MessageChannel,"readchannel")
+                    channelPermsEdit(BlacklistChannel,"readchannel")
+                    channelPermsEdit(ImageChannel,"readchannel")
+                    send(channel,"Server Closing")
+                    return
                 elseif messagewords[1] == "restart" then
                     message:delete()
-                    channelPermsEdit(channel,"readchannel")
                     send(channel,"A restart has been requested.\n\nRestarting...")
+                    channelPermsEdit(BlacklistChannel,"readchannel")
+                    channelPermsEdit(MessageChannel,"readchannel")
+                    channelPermsEdit(ImageChannel,"readchannel")
                     os.execute("luvit restart")
                     os.exit()
                 end
@@ -706,6 +742,39 @@ client:on("ready", function()
                 end
                 data["BlacklistedWords"] = blacklistedwords
                 Storage:saveTable(data)
+            end
+            
+        elseif channel == ImageChannel then
+            if bypass and message.author.id == "143172810221551616" then
+                bypass = false
+                return
+            end
+            if message.content ~= "" then
+                message:delete()
+                local DM = message.author:getPrivateChannel()
+                if message.embed ~= nil then
+                    send(DM,"_ _\nHi.\nYou're not allowed to post links to images. ~~Links give you too much freedom.~~")
+                else
+                    send(DM,"_ _\nHi.\nYou're not allowed to type any text in the image channel. It is an image channel, afterall.")
+                end
+                return
+            end
+            if #message.attachments > 1 then
+                message:delete()
+                local DM = message.author:getPrivateChannel()
+                send(DM,"_ _\nHi.\nYou can't send more than 1 image in a message. I would, but it's too difficult to point to which one I'm talking about.")
+                return
+            end
+            if message.attachment.size > 2000 then
+                message:delete()
+                local size = message.attachment.size/1000
+                local datatype = " kilobytes"
+                if size > 1000 then
+                    size = size/1000
+                    datatype = " megabytes"
+                end
+                local DM = message.author:getPrivateChannel()
+                send(DM,"_ _\nHi.\nYour image is "..round(size,3)..datatype..". You may only post images under 2 kilobytes.")
             end
         end
     end
