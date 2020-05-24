@@ -744,6 +744,7 @@ client:on("ready", function()
                 Storage:saveTable(data)
             end
             
+        --Handles filtering Image channel messages, removes any image over 2KB or isn't an image
         elseif channel == ImageChannel then
             if bypass and message.author.id == "143172810221551616" then
                 bypass = false
@@ -758,19 +759,22 @@ client:on("ready", function()
                     send(DM,"_ _\nHi.\nYou're not allowed to type any text in the image channel. It is an image channel, afterall.")
                 end
                 return
-            end
-            if #message.attachments > 1 then
+            elseif #message.attachments > 1 then
                 message:delete()
                 local DM = message.author:getPrivateChannel()
-                send(DM,"_ _\nHi.\nYou can't send more than 1 image in a message. I would, but it's too difficult to point to which one I'm talking about.")
+                send(DM,"_ _\nHi.\nYou can't send more than 1 image in a message. I would allow it, but it'd be too difficult to point to which one I'm talking about.")
                 return
-            end
-            if message.attachment.size > 2000 then
+            elseif message.attachment.height == nil then
                 message:delete()
-                local size = message.attachment.size/1000
+                local DM = message.author:getPrivateChannel()
+                send(DM,"_ _\nHi.\nYou sent a file.. but it isn't an image. Your file needs to be in an image format for me to accept it.")
+                return
+            elseif message.attachment.size > 2048 then
+                message:delete()
+                local size = message.attachment.size/1024
                 local datatype = " kilobytes"
-                if size > 1000 then
-                    size = size/1000
+                if size > 1024 then
+                    size = size/1024
                     datatype = " megabytes"
                 end
                 local DM = message.author:getPrivateChannel()
