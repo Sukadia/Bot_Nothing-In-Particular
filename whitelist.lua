@@ -436,6 +436,8 @@ client:on("ready", function()
                                 send(channel,"The blacklist channel is really basic.\n\nAll you need to know is that you can't say any words that have been spoken in the channel before. If you speak an unspoken word, no one will be able to use it anymore.\n\nThere's no commands or events for this channel.\n\n**Type another keyword or `exit` to continue.**")
                             elseif command == "development" then
                                 send(channel,"To kill time, Sukadia programs this bot and adds features to it.\n\nThe bot runs in the Lua programming language and the Lua discord api, Discordia.\n\nIt started out as just a funny joke to add to the empty server, but started to be something I could keep adding on to. I would run it 24/7, but I don't have a hosting service to use and don't want to leave my computer running overnight.\n\n**Type another keyword or `exit` to continue.**")
+                            elseif command == "code" then
+                                send(channel,"I have a public github that reflects the current features of the bot. It is not real-time, so it's only updated after a change is made (not during development of a change).\n\nhttps://github.com/Sukadia/-Public-Whitelist-Bot-\n\n**Type another keyword or `exit` to continue.**")
                             elseif command == "exit" or command == "cancel" then
                                 send(channel,"Hope whatever I answered helped! DM Sukadia for further inquiries.\n\nAny message past here will be accepted as a command.")
                                 exitloop = true
