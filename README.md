@@ -6,8 +6,6 @@ discord.gg/dyKq569
 
 The bot runs off of Discordia in the Lua programming language. The main script (and the one run during startup) is whitelist.lua. Note that it's probably a hot mess, I made the bot as a funny thing and did not plan ahead, so it's quite crowded.
 
-Feel free to create any pull requests or issues if you'd like. It'd probably be easier to DM me for issues though, but you have the option.
-
 If for some reason you'd like to create a pull request (free labor !!!), I'll look it over and it'd be best to include a detailed description on what it changes. If it's good to go I'll add it to the main bot ~~and I'm not against collaborating with someone.~~
 
 You can also post issues if you want, but it'd probably be best to DM me directly if there's need for one.
