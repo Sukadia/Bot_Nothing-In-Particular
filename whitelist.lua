@@ -1,7 +1,5 @@
 --Monopoly idea: You start with one word randomly given to you, you can use it in the specific channel but only that word. Every time you use the word (with a 5 minute debounce) you get letter currency. This might be something low like 0.08 letters. With letters you can request a word for the # of letters in it. There is a market when you request to buy a word, and people can bid for it. A person can bid all their letters +10% (or something) so they'd go in debt if they get it. Once a person owns a word, they must set a price to it for rent. It must be rentable, and the higher the price the more tax there will be on it. Tax will be linear, but because of the higher price it'll actually exponentially get worse because less people will buy it too.
 
---Need to get rid of dmuserlist, it's a built in channel.recipient
-
 local token = "RealTokenHere"
 local serverid = "669338665956409374"
 
@@ -9,6 +7,7 @@ local discordia = require("discordia")
 local timer = require("timer")
 local client = discordia.Client()
 local Enum = discordia.enums
+local Permissions = discordia.Permissions()
 
 local Storage = require("libs/Storage")
 local Json = require("json")
@@ -17,7 +16,6 @@ local Coro = require("coro-http")
 -- Data
 
 local messagecooldown = {}  --{[dmchannelid]={messagetime1, ...}}  --Logs each time the bot DMs the user, used to stop spam of >3 messages in 5 seconds
-local dmuserlist = {}       --{[dmchannel]=user}                   --Logs the user linked to the DM, used in send() for muting permissions
 
 local whitelistedwords = {} --{"word1", ...}                       --List of all whitelisted words, used to compare all of a message's words
 local usersuggested = {}    --{userid1, ...}                       --List of all users who've suggested for the timeframe, used to block more suggestions
@@ -81,19 +79,27 @@ function channelPermsEdit(channel,permtype,userid) --Changes channel perms for @
         role = server:getMember(userid)
     end
     local perms = channel:getPermissionOverwriteFor(role)
-    perms:clearAllPermissions()
     if permtype == "readchannel" then
-        perms:allowPermissions(Enum.permission.readMessageHistory,Enum.permission.readMessages)
+        local permobject = Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages)
+        perms:setAllowedPermissions(permobject)
     elseif permtype == "messagechannel" then
         if userid == nil then
-            perms:allowPermissions(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages)
+            local permobject = Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages)
+            perms:setAllowedPermissions(permobject)
         else
             perms:delete()
         end
     elseif permtype == "imagechannel" then
-        perms:allowPermissions(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages,Enum.permission.attachFiles)
-    elseif permtype == "noaccess" then
-        perms:denyPermissions(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages)
+        local permobject = Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages,Enum.permission.attachFiles) 
+        perms:setAllowedPermissions(permobject)
+    elseif permtype == "speakchannel" then
+        local permobject = Permissions.fromMany(Enum.permission.connect,Enum.permission.speak,Enum.permission.useVoiceActivity,Enum.permission.readMessages)
+        perms:setAllowedPermissions(permobject)
+    elseif permtype == "nospeakchannel" then
+        local permobject = Permissions.fromMany(Enum.permission.readMessages)
+        perms:setAllowedPermissions(permobject)
+    elseif permtype == "clear" then
+        perms:delete()
     end
 end
 
@@ -150,11 +156,11 @@ function send(channel,message,bypass) --Sends a message and checks for spam, ret
                 if #messagecooldown[channel] > 3 then
                     messagecooldown[channel] = "Muted"
                     channel:send("_ _\nWoah, sorry. I can't respond to more than 3 messages every five seconds.\nAs a procaution I have to mute/ignore you for a good 30 seconds. I'll tell you when you're good to go.")
-                    channelPermsEdit(MessageChannel,"readchannel",dmuserlist[channel.id])
-                    channelPermsEdit(BlacklistChannel,"readchannel",dmuserlist[channel.id])
+                    channelPermsEdit(MessageChannel,"readchannel",channel.recipient)
+                    channelPermsEdit(BlacklistChannel,"readchannel",channel.recipient)
                     wait(30)
-                    channelPermsEdit(MessageChannel,"messagechannel",dmuserlist[channel.id])
-                    channelPermsEdit(BlacklistChannel,"messagechannel",dmuserlist[channel.id])
+                    channelPermsEdit(MessageChannel,"messagechannel",channel.recipient)
+                    channelPermsEdit(BlacklistChannel,"messagechannel",channel.recipient)
                     channel:send("_ _\nOkay, you're good now.")
                     messagecooldown[channel] = nil
                     do return end
@@ -237,7 +243,8 @@ client:on("ready", function()
     MessageChannel = server:getChannel("702348672007929888")
     BlacklistChannel = server:getChannel("707724715141365820")
     ImageChannel = server:getChannel("713449279548817560")
-    CapitalistChannel = server:getChannel("708147170628599830")
+    VoiceStatusChannel = server:getChannel("713500391714717697")
+    SpeakChannel = server:getChannel("713500471825793095")
     
     local bypass = false
     local userbypass = {}
@@ -246,9 +253,6 @@ client:on("ready", function()
         --Precursor message events, logs user DM channel, ignores bot messages
         if message.author.bot then
             return
-        end
-        if dmuserlist[message.author:getPrivateChannel().id] == nil then
-            dmuserlist[message.author:getPrivateChannel().id] = message.author
         end
         local channel = message.channel
             
@@ -420,7 +424,7 @@ client:on("ready", function()
                 
             --Help command, just gives the information about the bot very vaguely
             elseif messagewords[1] == "help" then
-                send(channel,"Hello!\nYou've entered the help menu. What do you need help with?\n\n*What is this `server`?*\n*What are the `commands`?*\n*How does the `whitelist` channel work?*\n*How does the `blacklist` channel work?*\n*Tell me about the `development`.*\n\n**Type `exit` when you're done.**")
+                send(channel,"Hello!\nYou've entered the help menu. What do you need help with?\n\n*What is this `server`?*\n*What are the `commands`?*\n*How does the `whitelist` channel work?*\n*How does the `blacklist` channel work?*\n*How does the `image` channel work?*\n*Tell me about the `development`.*\n*What's the `code`?*\n\n**Type `exit` when you're done.**")
                 local exitloop = false
                 while not exitloop do
                     local timeout = client:waitFor("messageCreate",120*1000,function(message)
@@ -434,6 +438,8 @@ client:on("ready", function()
                                 send(channel,"The whitelist channel is somewhat basic, but is the main channel of the server.\n\nNow the obvious is that you can't say any word outside of the whitelist. However, you can suggest a word to be whitelisted if randomly chosen by using the `suggest (word)` command.\n\nThe channel works on a schedule, every 3 hours the bot picks three words and two user-suggested words randomly and adds them to the whitelist. Also, near the middle of each hour there's a chance for a special event to happen that'll give you an ability.\n\nThere isn't very much other than that, check the `commands` keyword to see what you can do with the whitelist.\n\n**Type another keyword or `exit` to continue.**")
                             elseif command == "blacklist" then
                                 send(channel,"The blacklist channel is really basic.\n\nAll you need to know is that you can't say any words that have been spoken in the channel before. If you speak an unspoken word, no one will be able to use it anymore.\n\nThere's no commands or events for this channel.\n\n**Type another keyword or `exit` to continue.**")
+                            elseif command == "image" then
+                                send(channel,"In the image channel you can only send images, the messages themselves can't contain text or any sort of link. Another caveat, these images must be under 2KB in size.\n\nThat may seem really low, but this encompasses basic small images, and Pugduddly has created a tool (pinned in the channel) which compresses your image to the acceptable size! Very neat.\n\n**Type another keyword or `exit` to continue.**")
                             elseif command == "development" then
                                 send(channel,"To kill time, Sukadia programs this bot and adds features to it.\n\nThe bot runs in the Lua programming language and the Lua discord api, Discordia.\n\nIt started out as just a funny joke to add to the empty server, but started to be something I could keep adding on to. I would run it 24/7, but I don't have a hosting service to use and don't want to leave my computer running overnight.\n\n**Type another keyword or `exit` to continue.**")
                             elseif command == "code" then
@@ -601,7 +607,9 @@ client:on("ready", function()
                     message:delete()
                     channelPermsEdit(MessageChannel,"messagechannel")
                     channelPermsEdit(BlacklistChannel,"messagechannel")
-                    channelPermsEdit(ImageChannel,"messagechannel")
+                    channelPermsEdit(ImageChannel,"imagechannel")
+                    channelPermsEdit(SpeakChannel,"speakchannel")
+                    channelPermsEdit(VoiceStatusChannel,"readchannel")
                     send(channel,"Server Reopened")
                     return
                 elseif messagewords[1] == "closeserver" then
@@ -609,6 +617,7 @@ client:on("ready", function()
                     channelPermsEdit(MessageChannel,"readchannel")
                     channelPermsEdit(BlacklistChannel,"readchannel")
                     channelPermsEdit(ImageChannel,"readchannel")
+                    channelPermsEdit(SpeakChannel,"nospeakchannel")
                     send(channel,"Server Closing")
                     return
                 elseif messagewords[1] == "restart" then
@@ -745,7 +754,7 @@ client:on("ready", function()
                 data["BlacklistedWords"] = blacklistedwords
                 Storage:saveTable(data)
             end
-            
+        
         --Handles filtering Image channel messages, removes any image over 2KB or isn't an image
         elseif channel == ImageChannel then
             if bypass and message.author.id == "143172810221551616" then
@@ -785,6 +794,146 @@ client:on("ready", function()
         end
     end
     
+    local voicestatus = "Nothing"
+    local voiceconnection = SpeakChannel:join()
+    local songs = {{["filename"] = "EmotionalPrism",["text"] = "Emotional Prism by BIGWAVE"},{["filename"] = "Lovesong",["text"] = "Lovesong by BIGWAVE"},{["filename"] = "Aquamarine",["text"] = "Aquamarine by BIGWAVE"},{["filename"] = "Weekend",["text"] = "Weekend by BIGWAVE"},{["filename"] = "Yume",["text"] = "Yume by BIGWAVE"}}
+    VoiceStatusChannel:getLastMessage():delete()
+    local status = VoiceStatusChannel:send{embed = {color = discordia.Color.fromRGB(100,100,100).value,description = "The voice channel is currently inactive."}}
+    local speakers = {}
+    local function manageVoice(member,channel)
+        if not member.user.bot then
+            local voiceusers = SpeakChannel.connectedMembers
+            if (#voiceusers - 1) < #speakers then
+                for i, speaker in pairs(speakers) do
+                    if speaker == member then
+                        table.remove(speakers,i)
+                        break
+                    end
+                end
+                if #speakers == 0 and voicestatus ~= "Talking" then
+                    status:clearReactions()
+                    status:update{embed = {color = discordia.Color.fromRGB(100,100,100).value,description = "The voice channel is currently inactive."}}
+                    return
+                end
+            else
+                table.insert(speakers,member)
+                if #speakers > 1 then
+                    member:mute()
+                end
+            end
+            if #speakers == 1 and voicestatus ~= "Talking" then
+                client:removeAllListeners("reactionAdd")
+                member:unmute()
+                status:update{embed = {color = discordia.Color.fromRGB(0,150,150).value,description = "**"..speakers[1].user.username.."**, you're the only one here so I can play some music until someone else joins.\n\nClick the checkmark if you want that, otherwise I'll stay quiet."}}
+                local statusreaction = status:addReaction("✅")
+                local reactionfunction = client:on("reactionAdd",function(reaction,id)
+                    if reaction.message == status then
+                        if id == speakers[1].user.id then --something in here throws me an uncached reaction warning after subsequent runs
+                            reaction:delete(status.author.id)
+                            reaction:delete(id)
+                            voicestatus = "Music"
+                            local function abort(member,channel)
+                                if voicestatus == "Music" and channel == SpeakChannel and not member.user.bot then
+                                    if member.voiceChannel ~= nil then
+                                        member:mute()
+                                    end
+                                    voicestatus = "Nothing"
+                                    voiceconnection:stopStream()
+                                end
+                            end
+                            client:on("voiceChannelLeave",abort)
+                            client:on("voiceChannelJoin",abort)
+
+                            local songnum = 1
+                            for i = #songs, 2, -1 do
+                                local j = math.random(i)
+                                songs[i], songs[j] = songs[j], songs[i]
+                            end
+                            while voicestatus == "Music" do
+                                if songs[songnum] == nil then
+                                    songnum = 1
+                                end
+                                local songinfo = songs[songnum]
+                                status:update{embed = {color = discordia.Color.fromRGB(0,255,255).value,description = "You got it!\n\n**Currently Playing:** "..songinfo["text"].."\nYou're not obligated to stay, just leave and rejoin if you're sick of it."}}
+                                voiceconnection:playFFmpeg("music/"..songinfo["filename"]..".mp3")
+                                songnum = songnum + 1
+                            end
+                            return
+                        elseif not client:getUser(id).bot then
+                            reaction:delete(id)
+                        end
+                    end
+                end)
+            elseif #speakers > 1 and voicestatus ~= "Talking" then
+                status:clearReactions()
+                if voicestatus == "Music" then
+                    status:update{embed = {color = discordia.Color.fromRGB(100,100,100).value,description = "I see there's "..#speakers.." people in the voice channel. I'll start my process once we hit a new minute.\n\n**"..speakers[1].name.."**, you were listening to music before "..speakers[2].name.." joined, so you may scream at them for interrupting it."}}
+                else
+                    status:update{embed = {color = discordia.Color.fromRGB(100,100,100).value,description = "I see there's "..#speakers.." people in the voice channel. I'll start my process once we hit a new minute."}}
+                    if #speakers == 2 then
+                        speakers[1]:mute()
+                    end
+                end
+                voicestatus = "Waiting"
+            end
+        end
+    end
+    coroutine.wrap(function()
+        while true do
+            wait(60-(os.time()%60))
+            while #speakers > 1 do
+                voicestatus = "Talking"
+                local currentlist = {table.unpack(speakers)}
+                local string = "To make sure everyone gets their turn, here's the times you get to speak:\n\n"
+                local timeallocated = 50/#currentlist
+                for i, member in pairs(currentlist) do
+                    string = string.."[00:"..round(((timeallocated*i)-timeallocated+10),1).." - 00:"..round(((timeallocated*i)+10),1).."] "..member.name.."\n"
+                end
+                status:update{embed = {color = discordia.Color.fromRGB(0,255,255).value,description = string}}
+                wait(10-(os.time()%10))
+                for i, member in pairs(currentlist) do
+                    local waituntil = os.time() + timeallocated
+                    if member.voiceChannel ~= nil then
+                        member:unmute()
+                    end
+                    local string = "**"..member.name.."**, you have ~"..round(timeallocated).." seconds to speak.\n\n"
+                    for v, member in pairs(currentlist) do
+                        local memberstatus = "Left"
+                        for i, online in pairs(speakers) do
+                            if online == member then
+                                memberstatus = "Online"
+                                break
+                            end
+                        end
+                        if memberstatus == "Left" and v == i then
+                            string = "**"..member.name.."** ditched so you can sit ~"..round(timeallocated).." seconds in silence.\n\n"
+                            string = string.."~~**[00:"..round(((timeallocated*v)-timeallocated+10),1).." - 00:"..round(((timeallocated*v)+10),1).."] "..member.name.."**~~\n"
+                        elseif memberstatus == "Left" then
+                            string = string.."~~[00:"..round(((timeallocated*v)-timeallocated+10),1).." - 00:"..round(((timeallocated*v)+10),1).."] "..member.name.."~~\n"
+                        elseif v == i then
+                            string = string.."**[00:"..round(((timeallocated*v)-timeallocated+10),1).." - 00:"..round(((timeallocated*v)+10),1).."] "..member.name.."**\n"
+                        else
+                            string = string.."[00:"..round(((timeallocated*v)-timeallocated+10),1).." - 00:"..round(((timeallocated*v)+10),1).."] "..member.name.."\n"
+                        end
+                    end
+                    status:update{embed = {color = discordia.Color.fromRGB(0,255,255).value,description = string}}
+                    wait(waituntil - os.time())
+                    if member.voiceChannel ~= nil then
+                        member:mute()
+                    end
+                end
+                if #speakers == 1 then
+                    voicestatus = "Waiting"
+                    status:update{embed = {color = discordia.Color.fromRGB(0,150,150).value,description = "**"..speakers[1].user.username.."**, looks like you're the last one remaining. If you want to listen to music you can leave and rejoin, otherwise you can wait here."}}
+                elseif #speakers == 0 then
+                    voicestatus = "Nothing"
+                    status:update{embed = {color = discordia.Color.fromRGB(100,100,100).value,description = "The voice channel is currently inactive."}}
+                end
+            end
+        end
+    end)()
+    client:on("voiceChannelLeave",manageVoice)
+    client:on("voiceChannelJoin",manageVoice)
     client:on("messageUpdate",checkMessage)
     client:on("messageCreate",checkMessage)
     
