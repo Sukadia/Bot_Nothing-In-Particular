@@ -26,8 +26,6 @@ local wordcounter = {}      --{{"word",numberofuses}, ...}         --List of all
 local ideabuffer = {}       --{[userid]=timesubmitted}             --Logs what time the user submitted an idea, used to block more ideas within an hour
 local disablepika = {}      --{userid1, ...}                       --List of all userids that shouldn't get the stare, given when submitting an idea
 
-local blacklistedwords = {} --{"word1", ...}                       --List of all blacklisted words, used to compare all of a message's words
-
 -- Functions
 
 function dump(o) --Decode tables into printable format, returns string
@@ -157,10 +155,12 @@ function send(channel,message,bypass) --Sends a message and checks for spam, ret
                     messagecooldown[channel] = "Muted"
                     channel:send("_ _\nWoah, sorry. I can't respond to more than 3 messages every five seconds.\nAs a procaution I have to mute/ignore you for a good 30 seconds. I'll tell you when you're good to go.")
                     channelPermsEdit(MessageChannel,"readchannel",channel.recipient)
-                    channelPermsEdit(BlacklistChannel,"readchannel",channel.recipient)
+                    channelPermsEdit(ImageChannel,"readchannel",channel.recipient)
+                    channelPermsEdit(VowelChannel,"readchannel",channel.recipient)
                     wait(30)
                     channelPermsEdit(MessageChannel,"messagechannel",channel.recipient)
-                    channelPermsEdit(BlacklistChannel,"messagechannel",channel.recipient)
+                    channelPermsEdit(ImageChannel,"imagechannel",channel.recipient)
+                    channelPermsEdit(VowelChannel,"messagechannel",channel.recipient)
                     channel:send("_ _\nOkay, you're good now.")
                     messagecooldown[channel] = nil
                     do return end
@@ -241,10 +241,10 @@ client:on("ready", function()
     server = client:getGuild(serverid)
     data = Storage:getTable()
     MessageChannel = server:getChannel("702348672007929888")
-    BlacklistChannel = server:getChannel("707724715141365820")
     ImageChannel = server:getChannel("713449279548817560")
     VoiceStatusChannel = server:getChannel("713500391714717697")
     SpeakChannel = server:getChannel("713500471825793095")
+    VowelChannel = server:getChannel("715371845070618674")
     
     local bypass = false
     local userbypass = {}
@@ -424,7 +424,7 @@ client:on("ready", function()
                 
             --Help command, just gives the information about the bot very vaguely
             elseif messagewords[1] == "help" then
-                send(channel,"Hello!\nYou've entered the help menu. What do you need help with?\n\n*What is this `server`?*\n*What are the `commands`?*\n*How does the `whitelist` channel work?*\n*How does the `blacklist` channel work?*\n*How does the `image` channel work?*\n*Tell me about the `development`.*\n*What's the `code`?*\n\n**Type `exit` when you're done.**")
+                send(channel,"Hello!\nYou've entered the help menu. What do you need help with?\n\n*What is this `server`?*\n*What are the `commands`?*\n*How does the `whitelist` channel work?*\n*How does the `vowel` channel work?*\n*How does the `image` channel work?*\n*Tell me about the `development`.*\n*What's the `code`?*\n\n**Type `exit` when you're done.**")
                 local exitloop = false
                 while not exitloop do
                     local timeout = client:waitFor("messageCreate",120*1000,function(message)
@@ -436,8 +436,8 @@ client:on("ready", function()
                                 send(channel,"Here's all the commands you can DM me:\n\n`wordlist [letters]` Gives you all the whitelisted words. If letters are provided, lists all words which start with them.\n`suggest (word)` Adds a word to the user-submission lineup to be randomly chosen every three hours.\n`worduse [word]` Lists the top 10 most used words. If a word is provided, lists how many times that word has been used.\n`define (word)` Gives you all of the definitions of the whitelisted word from the Merriam-Webster dictionary.\n\n`filesize` Gives you the size of the bot's savedata file.\n`idea` Allows you to send an anonymous message to Sukadia with an idea or anything similar.\n\n**Type another keyword or `exit` to continue.**")   
                             elseif command == "whitelist" then
                                 send(channel,"The whitelist channel is somewhat basic, but is the main channel of the server.\n\nNow the obvious is that you can't say any word outside of the whitelist. However, you can suggest a word to be whitelisted if randomly chosen by using the `suggest (word)` command.\n\nThe channel works on a schedule, every 3 hours the bot picks three words and two user-suggested words randomly and adds them to the whitelist. Also, near the middle of each hour there's a chance for a special event to happen that'll give you an ability.\n\nThere isn't very much other than that, check the `commands` keyword to see what you can do with the whitelist.\n\n**Type another keyword or `exit` to continue.**")
-                            elseif command == "blacklist" then
-                                send(channel,"The blacklist channel is really basic.\n\nAll you need to know is that you can't say any words that have been spoken in the channel before. If you speak an unspoken word, no one will be able to use it anymore.\n\nThere's no commands or events for this channel.\n\n**Type another keyword or `exit` to continue.**")
+                            elseif command == "vowel" then
+                                send(channel,"The vowel channel is really basic.\n\nYou're not allowed to send any messages containing vowels. If you do, the bot will gladly send you a new version that excludes vowels.\n\n**Type another keyword or `exit` to continue.**")
                             elseif command == "image" then
                                 send(channel,"In the image channel you can only send images, the messages themselves can't contain text or any sort of link. Another caveat, these images must be under 2KB in size.\n\nThat may seem really low, but this encompasses basic small images, and Pugduddly has created a tool (pinned in the channel) which compresses your image to the acceptable size! Very neat.\n\n**Type another keyword or `exit` to continue.**")
                             elseif command == "development" then
@@ -606,16 +606,15 @@ client:on("ready", function()
                 elseif messagewords[1] == "openserver" then
                     message:delete()
                     channelPermsEdit(MessageChannel,"messagechannel")
-                    channelPermsEdit(BlacklistChannel,"messagechannel")
+                    channelPermsEdit(VowelChannel,"messagechannel")
                     channelPermsEdit(ImageChannel,"imagechannel")
                     channelPermsEdit(SpeakChannel,"speakchannel")
-                    channelPermsEdit(VoiceStatusChannel,"readchannel")
                     send(channel,"Server Reopened")
                     return
                 elseif messagewords[1] == "closeserver" then
                     message:delete()
                     channelPermsEdit(MessageChannel,"readchannel")
-                    channelPermsEdit(BlacklistChannel,"readchannel")
+                    channelPermsEdit(VowelChannel,"readchannel")
                     channelPermsEdit(ImageChannel,"readchannel")
                     channelPermsEdit(SpeakChannel,"nospeakchannel")
                     send(channel,"Server Closing")
@@ -623,9 +622,10 @@ client:on("ready", function()
                 elseif messagewords[1] == "restart" then
                     message:delete()
                     send(channel,"A restart has been requested.\n\nRestarting...")
-                    channelPermsEdit(BlacklistChannel,"readchannel")
                     channelPermsEdit(MessageChannel,"readchannel")
+                    channelPermsEdit(VowelChannel,"readchannel")
                     channelPermsEdit(ImageChannel,"readchannel")
+                    channelPermsEdit(SpeakChannel,"nospeakchannel")
                     os.execute("luvit restart")
                     os.exit()
                 end
@@ -679,81 +679,6 @@ client:on("ready", function()
                 data["WordCount"] = wordcounter
                 Storage:saveTable(data)
             end
-                
-        --Handles filtering Blacklist channel messages, removes any word that's been used, doesn't accept commands
-        elseif channel == BlacklistChannel then
-            local text = string.lower(message.content)
-            local messagewords = split(text)
-            
-            --Ignore filtering if the bypass command was used in the other channel
-            if bypass and message.author.id == "143172810221551616" then
-                bypass = false
-                return
-            else
-                local i = 0
-                for letter in string.gmatch(text,".") do
-                    i = i+1
-                    if (string.match(letter,"%W") and string.match(letter,"%C") and string.match(letter,"%P") and string.match(letter,"%S")) or letter == "-" or letter == "_" then
-                        text = string.sub(text,1,i-1).."**[** "..letter.." **]**"..string.sub(text,i+1)
-                        message:delete()
-                        local DM = message.author:getPrivateChannel()
-                        local message = send(DM,"_ _\nHi.\nThe last message you sent was deleted. I've bracketed a symbol that isn't allowed: \n\n\""..text.."\"")
-                        if message == nil then
-                            print("ERROR RESOLVED")
-                            send(DM,"_ _\nHi.\nThe last message you sent was deleted. Emojis are blacklisted by default.")
-                        end
-                        return
-                    end
-                end
-                text = string.gsub(text,"[%p%c]","")
-            end
-            messagewords = split(text)
-            local badwords = {}
-            for i, word in pairs(messagewords) do
-                if string.len(word) > 20 then
-                    message:delete()
-                    local DM = message.author:getPrivateChannel()
-                    send(DM,"_ _\nHi.\nThe last message you sent was deleted. You said a word that's more than 20 letters: \n\n\""..word.."\"")
-                    return
-                end
-                for v, blacklistedword in pairs(blacklistedwords) do
-                    if word == blacklistedword then
-                        table.insert(badwords,word)
-                        break
-                    end
-                end
-            end
-            
-            if #badwords > 0 then
-                
-                --Deletes message and DMs the words in bold that were blacklisted
-                message:delete()
-                local attemptedsentence = ""
-                for i, word in pairs(messagewords) do
-                    local approved = true
-                    for v, badword in pairs(badwords) do
-                        if word == badword then
-                            approved = false
-                            attemptedsentence = attemptedsentence.."**"..word.."** "
-                            break
-                        end
-                    end
-                    if approved then
-                        attemptedsentence = attemptedsentence..word.." "
-                    end
-                end
-                attemptedsentence = string.sub(attemptedsentence,1,-2)
-                local DM = message.author:getPrivateChannel()
-                send(DM,"_ _\nHi.\nThe last message you sent was deleted. I bolded the words that are blacklisted:\n\n\""..attemptedsentence.."\"")
-            else
-                
-                --Takes all of the words in the message and blacklists them
-                for i, usedword in pairs(messagewords) do
-                    table.insert(blacklistedwords,usedword)
-                end
-                data["BlacklistedWords"] = blacklistedwords
-                Storage:saveTable(data)
-            end
         
         --Handles filtering Image channel messages, removes any image over 2KB or isn't an image
         elseif channel == ImageChannel then
@@ -790,6 +715,61 @@ client:on("ready", function()
                 end
                 local DM = message.author:getPrivateChannel()
                 send(DM,"_ _\nHi.\nYour image is "..round(size,3)..datatype..". You may only post images under 2 kilobytes.")
+            end
+            
+        --Handles filtering Vowel channel messages, removes any message that contains vowels
+        elseif channel == VowelChannel then
+            local text = string.lower(message.content)
+            local messagewords = split(text)
+            
+            --Ignore filtering if the bypass command was used in the other channel
+            if bypass and message.author.id == "143172810221551616" then
+                bypass = false
+                return
+            else
+                local i = 0
+                for letter in string.gmatch(text,".") do
+                    i = i+1
+                    if (string.match(letter,"%W") and string.match(letter,"%C") and string.match(letter,"%P") and string.match(letter,"%S")) or letter == "-" or letter == "_" then
+                        text = string.sub(text,1,i-1).."**[** "..letter.." **]**"..string.sub(text,i+1)
+                        message:delete()
+                        local DM = message.author:getPrivateChannel()
+                        local message = send(DM,"_ _\nHi.\nThe last message you sent was deleted. I've bracketed a symbol that isn't allowed: \n\n\""..text.."\"")
+                        if message == nil then
+                            print("ERROR RESOLVED")
+                            send(DM,"_ _\nHi.\nThe last message you sent was deleted. Emojis are blacklisted by default.")
+                        end
+                        return
+                    end
+                end
+            end
+            
+            local vowels = {"a","e","i","o","u"}
+            local nonvowel = ""
+            local v = 0
+            local letterlist = {}
+            local deleted = false
+            string.gsub(text,".",function(c) table.insert(letterlist,c) end)
+            for letter in string.gmatch(string.lower(text),".") do
+                v = v+1
+                local hasvowel = false
+                for i, vowel in pairs(vowels) do
+                    if vowel == letter then
+                        if not deleted then
+                            deleted = true
+                            message:delete()
+                        end
+                        hasvowel = true
+                        break
+                    end
+                end
+                if not hasvowel then
+                    nonvowel = nonvowel..letterlist[v]
+                end
+            end
+            if nonvowel ~= text then
+                local DM = message.author:getPrivateChannel()
+                local message = send(DM,"_ _\nHi.\nThe last message you sent was deleted. It contained vowels. However, here's a version of your message that you can send:\n\n`"..nonvowel.."`")
             end
         end
     end
@@ -845,6 +825,7 @@ client:on("ready", function()
                             client:on("voiceChannelJoin",abort)
 
                             local songnum = 1
+                            math.randomseed(os.time())
                             for i = #songs, 2, -1 do
                                 local j = math.random(i)
                                 songs[i], songs[j] = songs[j], songs[i]
@@ -990,7 +971,6 @@ client:on("ready", function()
     usersuggested = data["SuggestedUsers"]
     inventories = data["Inventory"]
     wordcounter = data["WordCount"]
-    blacklistedwords = data["BlacklistedWords"]
     
     --Waits until the start of an hour, then begins the word acception loop
     local timeuntilhour = 3600-(os.time()%3600)
