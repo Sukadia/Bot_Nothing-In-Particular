@@ -1,4 +1,5 @@
---Monopoly idea: You start with one word randomly given to you, you can use it in the specific channel but only that word. Every time you use the word (with a 5 minute debounce) you get letter currency. This might be something low like 0.08 letters. With letters you can request a word for the # of letters in it. There is a market when you request to buy a word, and people can bid for it. A person can bid all their letters +10% (or something) so they'd go in debt if they get it. Once a person owns a word, they must set a price to it for rent. It must be rentable, and the higher the price the more tax there will be on it. Tax will be linear, but because of the higher price it'll actually exponentially get worse because less people will buy it too.
+-- Remake spam detection, allow options for silent (no message) detection and bot DM message detection
+-- Make a data persistent restart so server reopens when restarted
 
 local token = "RealTokenHere"
 local serverid = "669338665956409374"
@@ -155,10 +156,12 @@ function send(channel,message,bypass) --Sends a message and checks for spam, ret
                     messagecooldown[channel] = "Muted"
                     channel:send("_ _\nWoah, sorry. I can't respond to more than 3 messages every five seconds.\nAs a procaution I have to mute/ignore you for a good 30 seconds. I'll tell you when you're good to go.")
                     channelPermsEdit(MessageChannel,"readchannel",channel.recipient)
+                    channelPermsEdit(FuckEverythingChannel,"readchannel")
                     channelPermsEdit(ImageChannel,"readchannel",channel.recipient)
                     channelPermsEdit(VowelChannel,"readchannel",channel.recipient)
                     wait(30)
                     channelPermsEdit(MessageChannel,"messagechannel",channel.recipient)
+                    channelPermsEdit(FuckEverythingChannel,"messagechannel")
                     channelPermsEdit(ImageChannel,"imagechannel",channel.recipient)
                     channelPermsEdit(VowelChannel,"messagechannel",channel.recipient)
                     channel:send("_ _\nOkay, you're good now.")
@@ -241,6 +244,7 @@ client:on("ready", function()
     server = client:getGuild(serverid)
     data = Storage:getTable()
     MessageChannel = server:getChannel("702348672007929888")
+    FuckEverythingChannel = server:getChannel("717475651426189334")
     ImageChannel = server:getChannel("713449279548817560")
     VoiceStatusChannel = server:getChannel("713500391714717697")
     SpeakChannel = server:getChannel("713500471825793095")
@@ -502,8 +506,8 @@ client:on("ready", function()
                 local savedata = io.open("savedata", "r")
                 local size = savedata:seek("end")
                 local datatype = " B"
-                if size > 1000 then
-                    size = size/1000
+                if size > 1024 then
+                    size = size/1024
                     datatype = " KB"
                 end
                 size = round(size,3)
@@ -606,6 +610,7 @@ client:on("ready", function()
                 elseif messagewords[1] == "openserver" then
                     message:delete()
                     channelPermsEdit(MessageChannel,"messagechannel")
+                    channelPermsEdit(FuckEverythingChannel,"messagechannel")
                     channelPermsEdit(VowelChannel,"messagechannel")
                     channelPermsEdit(ImageChannel,"imagechannel")
                     channelPermsEdit(SpeakChannel,"speakchannel")
@@ -614,6 +619,7 @@ client:on("ready", function()
                 elseif messagewords[1] == "closeserver" then
                     message:delete()
                     channelPermsEdit(MessageChannel,"readchannel")
+                    channelPermsEdit(FuckEverythingChannel,"readchannel")
                     channelPermsEdit(VowelChannel,"readchannel")
                     channelPermsEdit(ImageChannel,"readchannel")
                     channelPermsEdit(SpeakChannel,"nospeakchannel")
@@ -623,6 +629,7 @@ client:on("ready", function()
                     message:delete()
                     send(channel,"A restart has been requested.\n\nRestarting...")
                     channelPermsEdit(MessageChannel,"readchannel")
+                    channelPermsEdit(FuckEverythingChannel,"readchannel")
                     channelPermsEdit(VowelChannel,"readchannel")
                     channelPermsEdit(ImageChannel,"readchannel")
                     channelPermsEdit(SpeakChannel,"nospeakchannel")
@@ -679,6 +686,10 @@ client:on("ready", function()
                 data["WordCount"] = wordcounter
                 Storage:saveTable(data)
             end
+        
+        elseif channel == FuckEverythingChannel then
+            wait(2)
+            message:delete()
         
         --Handles filtering Image channel messages, removes any image over 2KB or isn't an image
         elseif channel == ImageChannel then
