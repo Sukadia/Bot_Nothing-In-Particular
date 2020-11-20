@@ -16,6 +16,6 @@ I've only included the scripts created by me and the Discordia dependency. Refer
 
 ### Dependencies
 
-[Discordia](https://github.com/SinisterRectus/Discordia), Lua API library
+[Discordia](https://github.com/SinisterRectus/Discordia), Discord API library
 
 [Luvit](https://luvit.io), Lua Runtime Environment
