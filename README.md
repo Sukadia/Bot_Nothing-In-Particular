@@ -1,14 +1,21 @@
-# Public-Whitelist-Bot
+# Nothing In Particular
+#### A bot for [Sudakia's Server](https://discord.gg/sunJvMs)
 
-This is an open-sourced old version of the server control bot running on sudakia's server.
+This is a bot run with the Discordia library that ultimately controls the entire server. For context on its functions, refer to the #help channel in the discord.
 
-discord.gg/dyKq569
+### Changes
 
-The bot runs off of Discordia in the Lua programming language. The main script (and the one run during startup) is whitelist.lua. Note that it's probably a hot mess, I made the bot as a funny thing and did not plan ahead, so it's quite crowded.
+This repo is updated periodically. If you plan to contribute to the code, it's a good idea to contact me first so we can make sure you're editing something that's up-to-date. 
 
-This repo no longer reflects the current state of the bot, but rather an older version of it. This is for the reason that the inner-workings of the bot give way to easier bypasses and a way see hidden features.
+### Context
 
+The bot runs on a Raspberry Pi 4 Model B using the Raspberry Pi OS. [PM2](https://pm2.keymetrics.io) is the process manager that keeps the bot running.
 
-THIS REPO IS NOT THE FULL WORKING DIRECTORY
-
+**This repo is not the full working directory.**
 I've only included the scripts created by me and the Discordia dependency. References in the script to outside sources should be assumed to be present.
+
+### Dependencies
+
+[Discordia](https://github.com/SinisterRectus/Discordia), Lua API library
+
+[Luvit](https://luvit.io), Lua Runtime Environment
