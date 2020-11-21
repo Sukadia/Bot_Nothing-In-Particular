@@ -31,7 +31,7 @@ local ServerId = "669338665956409374"
 local OwnerId = "143172810221551616"
 local SaveInterval = 5 --Minutes between bot data being saved, excluding newword selection
 local SpamM, SpamS = 3, 5 --Messages/Second for Spam filter
-local NewW, NewU = 3, 1 --New Random / User Suggested Words
+local NewW, NewU = 3, 2 --New Random / User Suggested Words
 local CountUpdate = 2 --Minutes between count message updating
 local ChannelPerms = {["type"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
     ["fuck-vowels"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
