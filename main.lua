@@ -309,10 +309,11 @@ local function newWords() --Whitelist new words
     while wordsneeded ~= 0 do
         local result, body, randomwords
         local success, err = pcall(function()
-            result, body = Coro.request("GET","https://random-word-api2.herokuapp.com/word?number=20")
+            local result, body = Coro.request("GET","https://random-word-api2.herokuapp.com/word?number=20")
             randomwords = Json.decode(body)
         end)
         if success then
+            local newrandomwords = {}
             for i, word in pairs(randomwords) do
                 if wordsneeded == 0 then
                     break
@@ -320,14 +321,10 @@ local function newWords() --Whitelist new words
                 if not inTable(storagedata["WhitelistedWords"],word) then
                     wordsneeded = wordsneeded - 1
                     table.insert(storagedata["WhitelistedWords"],word)
-                    if wordsneeded == 0 then
-                        newwordtext = newwordtext.."and **"..word.."**"
-                    else
-                        newwordtext = newwordtext.."**"..word.."**, "
-                    end
+                    table.insert(newrandomwords,"**"..word.."**")
                 end
             end
-            newwordtext = newwordtext.." were randomly selected and whitelisted."
+            newwordtext = listItems(newrandomwords,true).." were randomly selected and whitelisted."
         else
             wordsneeded = 0
             newwordtext = "Random words couldn't be selected due to an API error."
@@ -356,38 +353,33 @@ local function newWords() --Whitelist new words
         elseif #storagedata["SuggestedWords"] == 0 then
             send(Channels["type"],"Dang, a unanimous decision? That never happens.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n**"..word1.."** was unanimously selected from "..totalsubmissions.." submissions."})
         else
-            local newwhitelistedwords = {word1} -- Array of new whitelisted words, used for message
-            local wordstext = "" -- String that will be used to store whitelisted words in text form
-            local totalsuggestedwords = #storagedata["SuggestedWords"] + 1 -- Required since words are removed from the array of all suggested words and we need to know the total amount of suggested words
+            local newwhitelistedwords = {"**"..word1.."**"} -- Array of new whitelisted words, used for message
             
-            while #storagedata["SuggestedWords"] > 0 and #newwhitelistedwords < NewU do -- Whitelist remaining words and add them to the array
+            while #storagedata["SuggestedWords"] > 0 and #newwhitelistedwords ~= NewU do -- Whitelist remaining words and add them to the array
                 local num2 = math.random(1,#storagedata["SuggestedWords"])
                 local word2 = storagedata["SuggestedWords"][num2][2] -- Find a new word to be whitelisted
                 print(storagedata["SuggestedWords"][num2][1].." whitelisted "..word2)
                 table.insert(storagedata["WhitelistedWords"],word2) -- Adds word to whitelisted words and the new whitelisted words array
-                table.insert(newwhitelistedwords,word2)
+                table.insert(newwhitelistedwords,"**"..word2.."**")
                 for i = #storagedata["SuggestedWords"], 1, -1 do -- Prevents word from being whitelisted multiple times
                     if storagedata["SuggestedWords"][i][2] == word2 then
                         table.remove(storagedata["SuggestedWords"],i)
                     end
                 end
             end
-
-            for i = 1, #newwhitelistedwords do -- Convert array of new whitelisted words into something easily human readable.
-                                               -- This doesn't need to be separate from the above code, but it's probably easier to understand like this.
-                if i == #newwhitelistedwords then
-                    wordstext = wordstext.."and **"..newwhitelistedwords[i].."**"
-                elseif #newwhitelistedwords == 2 then
-                    wordstext = wordstext.."**"..newwhitelistedwords[i].."** "
-                else
-                    wordstext = wordstext.."**"..newwhitelistedwords[i].."**, "
+            
+            if #newwhitelistedwords < NewU then -- Less than max amount was whitelisted
+                local missedplural = "s"
+                if (NewU-#newwhitelistedwords) == 1 then
+                    missedplural = ""
                 end
-            end
-
-            if totalsuggestedwords <= NewU then -- Change message if less words were whitelisted than the maximum
-                send(Channels["type"],"Here's the new words:",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..wordstext.." were the only submissions."})
-            else
-                send(Channels["type"],"Here's the new words:",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..wordstext.." were selected from "..totalsubmissions.." submissions."})
+                if #newwhitelistedwords ~= totalsubmissions then -- Less than max whitelisted, but some words were the same
+                    send(Channels["type"],"Huh, looks like there were some identical submissions.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were selected from "..totalsubmissions.." submissions."})
+                else
+                    send(Channels["type"],"Darn, missed the chance for "..(NewU-#newwhitelistedwords).." word"..missedplural.." being whitelisted.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were the only submissions."})
+                end
+            else -- Max amount of words whitelisted
+                send(Channels["type"],"Here's the new words:",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were selected from "..totalsubmissions.." submissions."})
             end
         end
     end
