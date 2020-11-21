@@ -1,6 +1,5 @@
 --A boss battle channel where it's all the users in the server against the channel, perhaps win an ability at the end, win gear or moves?
 --A channel where you can inflict something either on the person above or below
---Implement the NewU variable, the # of user suggestions
 
 --Do not load songs while paused so there's no required delay between skips (if you pause, that is)
 --Expand playlist feature with a queue overview, loop playlist, perhaps save default settings per-user
@@ -32,7 +31,7 @@ local ServerId = "669338665956409374"
 local OwnerId = "143172810221551616"
 local SaveInterval = 5 --Minutes between bot data being saved, excluding newword selection
 local SpamM, SpamS = 3, 5 --Messages/Second for Spam filter
-local NewW, NewU = 3, 2 --New Random / User Suggested Words -- NewU is unused
+local NewW, NewU = 3, 1 --New Random / User Suggested Words
 local CountUpdate = 2 --Minutes between count message updating
 local ChannelPerms = {["type"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
     ["fuck-vowels"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
@@ -342,23 +341,54 @@ local function newWords() --Whitelist new words
         print(storagedata["SuggestedWords"][1][1].." whitelisted "..storagedata["SuggestedWords"][1][2])
         send(Channels["type"],"Huh, only one submission.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n**"..storagedata["SuggestedWords"][1][2].."** was the only submission."})
     else
-        local num1 = math.random(1,totalsubmissions)
+        local num1 = math.random(1,totalsubmissions) -- Select the first word to be whitelisted
         local word1 = storagedata["SuggestedWords"][num1][2]
         print(storagedata["SuggestedWords"][num1][1].." whitelisted "..word1)
         table.insert(storagedata["WhitelistedWords"],word1)
-        for i = #storagedata["SuggestedWords"], 1, -1 do
+        for i = #storagedata["SuggestedWords"], 1, -1 do -- Remove word from list of suggested words
             if storagedata["SuggestedWords"][i][2] == word1 then
                 table.remove(storagedata["SuggestedWords"],i)
             end
         end
-        if #storagedata["SuggestedWords"] == 0 then
+
+        if NewU == 1 then
+            send(Channels["type"],"Here's the new words:",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n**"..word1.."** was selected from "..totalsubmissions.." submissions."})
+        elseif #storagedata["SuggestedWords"] == 0 then
             send(Channels["type"],"Dang, a unanimous decision? That never happens.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n**"..word1.."** was unanimously selected from "..totalsubmissions.." submissions."})
         else
-            local num2 = math.random(1,#storagedata["SuggestedWords"])
-            local word2 = storagedata["SuggestedWords"][num2][2]
-            print(storagedata["SuggestedWords"][num2][1].." whitelisted "..word2)
-            table.insert(storagedata["WhitelistedWords"],word2)
-            send(Channels["type"],"Here's the new words:",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n**"..word1.."** and **"..word2.."** were selected from "..totalsubmissions.." submissions."})
+            local newwhitelistedwords = {word1} -- Array of new whitelisted words, used for message
+            local wordstext = "" -- String that will be used to store whitelisted words in text form
+            local totalsuggestedwords = #storagedata["SuggestedWords"] + 1 -- Required since words are removed from the array of all suggested words and we need to know the total amount of suggested words
+            
+            while #storagedata["SuggestedWords"] > 0 and #newwhitelistedwords < NewU do -- Whitelist remaining words and add them to the array
+                local num2 = math.random(1,#storagedata["SuggestedWords"])
+                local word2 = storagedata["SuggestedWords"][num2][2] -- Find a new word to be whitelisted
+                print(storagedata["SuggestedWords"][num2][1].." whitelisted "..word2)
+                table.insert(storagedata["WhitelistedWords"],word2) -- Adds word to whitelisted words and the new whitelisted words array
+                table.insert(newwhitelistedwords,word2)
+                for i = #storagedata["SuggestedWords"], 1, -1 do -- Prevents word from being whitelisted multiple times
+                    if storagedata["SuggestedWords"][i][2] == word2 then
+                        table.remove(storagedata["SuggestedWords"],i)
+                    end
+                end
+            end
+
+            for i = 1, #newwhitelistedwords do -- Convert array of new whitelisted words into something easily human readable.
+                                               -- This doesn't need to be separate from the above code, but it's probably easier to understand like this.
+                if i == #newwhitelistedwords then
+                    wordstext = wordstext.."and **"..newwhitelistedwords[i].."**"
+                elseif #newwhitelistedwords == 2 then
+                    wordstext = wordstext.."**"..newwhitelistedwords[i].."** "
+                else
+                    wordstext = wordstext.."**"..newwhitelistedwords[i].."**, "
+                end
+            end
+
+            if totalsuggestedwords <= NewU then -- Change message if less words were whitelisted than the maximum
+                send(Channels["type"],"Here's the new words:",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..wordstext.." were the only submissions."})
+            else
+                send(Channels["type"],"Here's the new words:",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..wordstext.." were selected from "..totalsubmissions.." submissions."})
+            end
         end
     end
     table.sort(storagedata["WhitelistedWords"])
@@ -1107,7 +1137,7 @@ local function NewMessage(message)
             if tonumber(arguments[2]) ~= nil or arguments[2] == nil then
                 local page = tonumber(arguments[2]) or 1
                 local string = "There are **"..#storagedata["WhitelistedWords"].."** whitelisted words you can say:\n\n`Page "..page.."`\nUse `wordlist [#]` to browse pages.\n\n"
-                local currentpage = 0
+                local currentpage = 1
                 for i, word in pairs(storagedata["WhitelistedWords"]) do
                     string = string..word..", "
                     if storagedata["WhitelistedWords"][i+1] ~= nil then
