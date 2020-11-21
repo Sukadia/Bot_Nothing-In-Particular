@@ -29,6 +29,7 @@ local Storage = require("NewStorage")
 local DevMode = false
 local BotToken = io.open("token","r"):read("*a")
 local ServerId = "669338665956409374"
+local OwnerId = "143172810221551616"
 local SaveInterval = 5 --Minutes between bot data being saved, excluding newword selection
 local SpamM, SpamS = 3, 5 --Messages/Second for Spam filter
 local NewW, NewU = 3, 2 --New Random / User Suggested Words -- NewU is unused
@@ -46,17 +47,18 @@ local StartingData = {["CheckUses"]=0,["Inventory"]={},["State"]="Normal"}
 
 
 local storagedata = Storage:getData()
---[[
-local storagedata = {
-["WhitelistedWords"]={}, --{ "word1", ... }
-["SuggestedWords"]={},   --{ {"userid", "word"}, ... }
-["CountChannel"]={},     --{ ["Prestige"]=level, ["CountMessage"]=messageid ["Count"]=nextlength, ["LastUser"]=userid, ["Counters"]={ {UserId, Count}, ... }, ["FailedUser"]=userid, ["LastMessage"]=messageid }
-["PlayerData"]={},       --{ ["UserId"]=StartingDataConfig, ... }
-["WordCount"]={},        --{ {word, #ofuses}, ...}
-["LastSaved"]={},        --{ timesaved, closedproperly?, silentrestart? }
-["CheckUsers"]={},       --{ "userid", ... }
-}
-]]--
+if storagedata == nil then -- If no data was loaded, populate storagedata with default values
+    storagedata = {
+        ["WhitelistedWords"]={}, --{ "word1", ... }
+        ["SuggestedWords"]={},   --{ {"userid", "word"}, ... }
+        ["CountChannel"]={},     --{ ["Prestige"]=level, ["CountMessage"]=messageid ["Count"]=nextlength, ["LastUser"]=userid, ["Counters"]={ {UserId, Count}, ... }, ["FailedUser"]=userid, ["LastMessage"]=messageid }
+        ["PlayerData"]={},       --{ ["UserId"]=StartingDataConfig, ... }
+        ["WordCount"]={},        --{ {word, #ofuses}, ...}
+        ["LastSaved"]={},        --{ timesaved, closedproperly?, silentrestart? }
+        ["CheckUsers"]={},       --{ "userid", ... }
+    }
+end
+
 local spamdata = {}                          --{ ["UserId"]={messagetime, ... }, ... }  --Spam Detection
 local commanduse = {}                        --{ ["UserId"]="command", ... }            --Bypass ability
 local lastmessage = {}                       --{ ["UserId"]="lastmessage", ... }        --Multiple message bypass filter
@@ -544,9 +546,9 @@ Client:on("ready", function()
     
     if storagedata["LastSaved"][2] == false then
         if os.time()-storagedata["LastSaved"][1] > 600 then
-            send(Channels["type"],"The bot lost internet connection sometime between "..os.date("%I:%M:%S %p", storagedata["LastSaved"][1]).." and "..os.date("%I:%M:%S %p", storagedata["LastSaved"][1]+(SaveInterval*60)).." PDT. Save data was not affected.\n\nIf you've performed any actions between then and now, the bot may not have responded.\n\n<@143172810221551616>")
+            send(Channels["type"],"The bot lost internet connection sometime between "..os.date("%I:%M:%S %p", storagedata["LastSaved"][1]).." and "..os.date("%I:%M:%S %p", storagedata["LastSaved"][1]+(SaveInterval*60)).." PDT. Save data was not affected.\n\nIf you've performed any actions between then and now, the bot may not have responded.\n\n<@"..OwnerId..">")
         else
-            send(Channels["type"],"The bot has crashed. Save data between "..os.date("%I:%M:%S %p", storagedata["LastSaved"][1]).." and "..os.date("%I:%M:%S %p").." PDT was lost.\n\nIf you've performed any actions between then, you will have to do them again.\n\n<@143172810221551616>")
+            send(Channels["type"],"The bot has crashed. Save data between "..os.date("%I:%M:%S %p", storagedata["LastSaved"][1]).." and "..os.date("%I:%M:%S %p").." PDT was lost.\n\nIf you've performed any actions between then, you will have to do them again.\n\n<@"..OwnerId..">")
         end
     else
         if storagedata["LastSaved"][3] == false then
@@ -905,7 +907,7 @@ local function NewMessage(message)
     end
     local channel = message.channel
     local originaltext, text = message.content, string.lower(message.content)
-    if DevMode and user.id ~= "143172810221551616" then
+    if DevMode and user.id ~= OwnerId then
         print(user.username.." attempted to interact")
         send(user.id,"Get outta here, can't you see I'm working? This bot isn't going to code itself.",{["Title"]="Closed Testing",["Color"]={200,200,50},["Text"]="The bot is currently in closed testing.\n\nThis means the bot has been booted purely for the purpose of testing/fixing a new feature. You aren't allowed to interact with the bot during this time to make sure save data is preserved."})
         return
@@ -1167,7 +1169,7 @@ local function NewMessage(message)
         if arguments[1] == "use" then
             if arguments[2] == "bypass" then
                 local pos = inTable(storagedata["PlayerData"][user.id]["Inventory"],"bypass")
-                if user.id == "143172810221551616" then
+                if user.id == OwnerId then
                     commanduse[user.id] = "adminbypass"
                     send(user.id,"",{["Title"]="Admin Bypass",["Color"]={255,255,0},["Text"]="The next message you send in the server will be unfiltered."})
                 elseif pos then
@@ -1380,7 +1382,7 @@ local function NewMessage(message)
                 end
             end
             
-            if user.id == "143172810221551616" then
+            if user.id == OwnerId then
                 if arguments[1] == "ping" and arguments[2] ~= nil then
                     message:delete()
                     ping(arguments[2])
