@@ -1,5 +1,6 @@
 --A boss battle channel where it's all the users in the server against the channel, perhaps win an ability at the end, win gear or moves?
 --A channel where you can inflict something either on the person above or below
+--Fix wordlist's last page not existing (stops in the W's when there are Z words)
 
 --Do not load songs while paused so there's no required delay between skips (if you pause, that is)
 --Expand playlist feature with a queue overview, loop playlist, perhaps save default settings per-user
@@ -1129,7 +1130,7 @@ local function NewMessage(message)
             if tonumber(arguments[2]) ~= nil or arguments[2] == nil then
                 local page = tonumber(arguments[2]) or 1
                 local string = "There are **"..#storagedata["WhitelistedWords"].."** whitelisted words you can say:\n\n`Page "..page.."`\nUse `wordlist [#]` to browse pages.\n\n"
-                local currentpage = 1
+                local currentpage = 0
                 for i, word in pairs(storagedata["WhitelistedWords"]) do
                     string = string..word..", "
                     if storagedata["WhitelistedWords"][i+1] ~= nil then
