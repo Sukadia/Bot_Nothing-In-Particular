@@ -1,7 +1,10 @@
 --A boss battle channel where it's all the users in the server against the channel, perhaps win an ability at the end, win gear or moves?
 --A channel where you can inflict something either on the person above or below
+--Command for statistics like messages/day, deleted/accepted ratio, count highscore, ect.
 --Fix wordlist's last page not existing (stops in the W's when there are Z words)
+--Fix deleted message counting towards the multi-message bypass (1 letter in #message-counting, then another to start chain)
 
+--Make music channel controls be more obvious, perhaps an info button
 --Do not load songs while paused so there's no required delay between skips (if you pause, that is)
 --Expand playlist feature with a queue overview, loop playlist, perhaps save default settings per-user
 --Make code look neater and not so spread out, specifically with edits
