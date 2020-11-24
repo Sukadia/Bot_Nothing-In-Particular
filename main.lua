@@ -728,7 +728,7 @@ Client:on("ready", function()
                 local function playlistSearch(pagenum)
                     page = pagenum
                     song = 0
-                    local string = "`Page 1 / "..math.ceil(#playlists/5).."`\n\n"
+                    local string = "`Page "..pagenum.." / "..math.ceil(#playlists/5).."`\n\n"
                     for i=(pagenum*5)-4,pagenum*5 do
                         if playlists[i] then
                             string = string.."**"..i..".** "..playlists[i][2].."\n\n"
