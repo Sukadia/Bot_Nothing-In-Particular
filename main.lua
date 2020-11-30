@@ -1,9 +1,11 @@
 --A boss battle channel where it's all the users in the server against the channel, perhaps win an ability at the end, win gear or moves?
 --A channel where you can inflict something either on the person above or below
 --Command for statistics like messages/day, deleted/accepted ratio, count highscore, ect.
+--Random event that allows you to react to 5 messages
 --Fix wordlist's last page not existing (stops in the W's when there are Z words)
 --Fix deleted message counting towards the multi-message bypass (1 letter in #message-counting, then another to start chain)
 
+--Give embedded youtube link to song playing, give info on left side, queue on right using inline?
 --Make music channel controls be more obvious, perhaps an info button
 --Do not load songs while paused so there's no required delay between skips (if you pause, that is)
 --Expand playlist feature with a queue overview, loop playlist, perhaps save default settings per-user
@@ -61,7 +63,6 @@ if storagedata == nil then -- If no data was loaded, populate storagedata with d
         ["CheckUsers"]={},       --{ "userid", ... }
     }
 end
-
 local spamdata = {}                          --{ ["UserId"]={messagetime, ... }, ... }  --Spam Detection
 local commanduse = {}                        --{ ["UserId"]="command", ... }            --Bypass ability
 local lastmessage = {}                       --{ ["UserId"]="lastmessage", ... }        --Multiple message bypass filter
@@ -313,7 +314,7 @@ local function newWords() --Whitelist new words
     while wordsneeded ~= 0 do
         local result, body, randomwords
         local success, err = pcall(function()
-            local result, body = Coro.request("GET","https://random-word-api2.herokuapp.com/word?number=20")
+            local result, body = Coro.request("GET","https://random-word-api.herokuapp.com/word?number=20")
             randomwords = Json.decode(body)
         end)
         if success then
@@ -596,7 +597,7 @@ Client:on("ready", function()
     end
     
         
-    local playlists = {{"https://www.youtube.com/playlist?list=PLIF2opf2-1PpNtDL54NYzTflxwrpi_yfz","\"Happy Pokémon Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PrQE8OMQWDM3JFsMNumrucL","\"Pokémon Jamming Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLkDIan7sXW2ilCdIvS22xX2FNAn_YuoDO","\"Best Future Funk\" by Sound Station"},{"https://www.youtube.com/playlist?list=PLOzDu-MXXLliO9fBNZOQTBDddoA3FzZUo","\"Lofi Hip Hop\" by the bootleg boy"},{"https://www.youtube.com/playlist?list=PLxRnoC2v5tvg_xHK_roMyAStXDF-TRh2K","\"The Best of Retro Video Game Music\" by Specter227"}}
+    local playlists = {{"https://www.youtube.com/playlist?list=PLIF2opf2-1PpNtDL54NYzTflxwrpi_yfz","\"Happy Pokémon Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PrQE8OMQWDM3JFsMNumrucL","\"Pokémon Jamming Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLkDIan7sXW2ilCdIvS22xX2FNAn_YuoDO","\"Best Future Funk\" by Sound Station"},{"https://www.youtube.com/playlist?list=PLOzDu-MXXLliO9fBNZOQTBDddoA3FzZUo","\"Lofi Hip Hop\" by the bootleg boy"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqVOqEkAQo2g4LBgluEqTHU","\"Orchestral Pokémon Song Remakes\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLxRnoC2v5tvg_xHK_roMyAStXDF-TRh2K","\"The Best of Retro Video Game Music\" by Specter227"}}
     local musiccontrols = Channels["voice-controls"]:getLastMessage()
     local connection = Channels["music"]:join()
     local controller, page, song, videoqueue, playlistnum
@@ -1484,7 +1485,9 @@ local function NewMessage(message)
         if channel == Channels["important"] or channel == Channels["help"] or channel == Channels["test"] then
             return
         end
+        --[[
         
+        ]]
         
         --Delete messages containing special characters, morse code, or uses singular letters
             local i = 0
