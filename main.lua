@@ -2,15 +2,21 @@
 --A channel where you can inflict something either on the person above or below
 --Command for statistics like messages/day, deleted/accepted ratio, count highscore, ect.
 --Random event that allows you to react to 5 messages
+--Use multiple suggest word abilities for a longer word (20 default, +5 each ability?)
 --Fix wordlist's last page not existing (stops in the W's when there are Z words)
 --Fix deleted message counting towards the multi-message bypass (1 letter in #message-counting, then another to start chain)
+--Fix emojis right next to each other being disallowed (no space)
+--Switch from table[""] to table."" because it looks nicer
+--Fix the bot sometimes crashing but not sending a crash message on reboot
 
---Give embedded youtube link to song playing, give info on left side, queue on right using inline?
---Make music channel controls be more obvious, perhaps an info button
---Do not load songs while paused so there's no required delay between skips (if you pause, that is)
+--  Voice channels
+--Fix embed breaking if user leaves during "Waiting for buttons.."
+--Fix first song sometimes being the last played song instead of the newly loaded one
+--Give speak channel the editembed usage
+--Redesign embed, give song info on left side and queue on right side?
+--Make music channel controls be more obvious, perhaps an info button (maybe not necessary?)
+--Do not load songs while player is paused so you can scrub through songs without a load delay
 --Expand playlist feature with a queue overview, loop playlist, perhaps save default settings per-user
---Make code look neater and not so spread out, specifically with edits
-----Make a function that edits a singular part of an embed for the controller update, reads given message to keep values
 --Implement way to play audio through direct link? (May have to wait for Discordia 3.0)
 --Maybe don't download highest quality of youtube audio to reduce load time?
 
@@ -161,6 +167,13 @@ local function edit(message,text,embedinfo) --Edit a sent message, same embedinf
         embedinfo["Color"] = embedinfo["Color"] or {0,255,255}
         message:update{content=text,embed={title=embedinfo["Title"],color=Discordia.Color.fromRGB(embedinfo["Color"][1],embedinfo["Color"][2],embedinfo["Color"][3]).value,description=embedinfo["Text"],image={url=embedinfo["ImageUrl"]},footer={icon_url=embedinfo["FooterImage"],text=embedinfo["FooterText"]}}}
     end
+end
+
+local function editembed(message,text,embedinfo) --Edit an embed, preserve all parts of message except the ones provided
+    if embedinfo["Color"] then
+        embedinfo["Color"] = Discordia.Color.fromRGB(embedinfo["Color"][1],embedinfo["Color"][2],embedinfo["Color"][3]).value
+    end
+    message:update{content=(text or message.content),embed={title=(embedinfo["Title"] or message.embed.title),color=(embedinfo["Color"] or message.embed.color),description=(embedinfo["Text"] or message.embed.description),image={url=(embedinfo["ImageUrl"] or (message.embed.image and message.embed.image.url))},footer={icon_url=(embedinfo["FooterImage"] or (message.embed.footer and message.embed.footer.icon_url)),text=(embedinfo["FooterText"] or message.embed.footer and message.embed.footer.text)}}}
 end
 
 local function getResponse(channel,timeout) --Wait (timeout) seconds for a response in (channel)
@@ -600,7 +613,7 @@ Client:on("ready", function()
     local playlists = {{"https://www.youtube.com/playlist?list=PLIF2opf2-1PpNtDL54NYzTflxwrpi_yfz","\"Happy Pokémon Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PrQE8OMQWDM3JFsMNumrucL","\"Pokémon Jamming Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLkDIan7sXW2ilCdIvS22xX2FNAn_YuoDO","\"Best Future Funk\" by Sound Station"},{"https://www.youtube.com/playlist?list=PLOzDu-MXXLliO9fBNZOQTBDddoA3FzZUo","\"Lofi Hip Hop\" by the bootleg boy"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqVOqEkAQo2g4LBgluEqTHU","\"Orchestral Pokémon Song Remakes\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLxRnoC2v5tvg_xHK_roMyAStXDF-TRh2K","\"The Best of Retro Video Game Music\" by Specter227"}}
     local musiccontrols = Channels["voice-controls"]:getLastMessage()
     local connection = Channels["music"]:join()
-    local controller, page, song, videoqueue, playlistnum
+    local controller, page, songnum, videoqueue, playlistnum
     if musiccontrols and musiccontrols ~= speakcontrols then
         musiccontrols:clearReactions()
         edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={100,0,100},["Text"]="The music channel is currently inactive.\n\nJoin to activate its functionality."})
@@ -728,21 +741,21 @@ Client:on("ready", function()
                 
                 local function playlistSearch(pagenum)
                     page = pagenum
-                    song = 0
+                    songnum = 0
                     local string = "`Page "..pagenum.." / "..math.ceil(#playlists/5).."`\n\n"
                     for i=(pagenum*5)-4,pagenum*5 do
                         if playlists[i] then
                             string = string.."**"..i..".** "..playlists[i][2].."\n\n"
                         end
                     end
-                    edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={150,0,150},["Text"]=string,["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
+                    editembed(musiccontrols,nil,{["Color"]={150,0,150},["Text"]=string})
                 end
                  
                 local function playSong(video) -- Plays a song, and downloads the next song if one is given
                     local process = io.popen("youtube-dl -f \"bestaudio[ext=m4a]\" --restrict-filenames -o \"/tmp/currentsong.m4a\" https://www.youtube.com/watch?v="..video["url"].." 2>&1") -- Save audio of YouTube video to /tmp/currentsong.m4a, this is because /tmp is usually a ramdisk and we want to minimize SD card writes
                     process:read("*a") -- Output is read just to make sure the command has completed before progressing
                     io.close(process)
-                    edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={255,0,255},["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..song.." / "..#videoqueue.."`\n**"..video["title"].."**\n\n\nPress ".."1️⃣".." to quit",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
+                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..songnum.." / "..#videoqueue.."`\n**["..video["title"].."](https://www.youtube.com/watch?v="..video["url"]..")**\n\n\nPress ".."1️⃣".." to quit"})
                     connection:playFFmpeg("/tmp/currentsong.m4a")
                     wait(0.1)
                     os.remove("/tmp/currentsong.m4a")
@@ -752,7 +765,7 @@ Client:on("ready", function()
                     playlistnum = num
                     page = "Playing"
                     coroutine.wrap(function()
-                        edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={200,0,200},["Text"]="Loading Playlist..\n_ _",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
+                        editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Loading Playlist..\n_ _"})
                         local waiting = true
                         coroutine.wrap(function()
                             wait(5)
@@ -768,12 +781,12 @@ Client:on("ready", function()
                                 table.remove(videoqueue,i)
                             end
                         end
-                        song = 1
-                        while song < #videoqueue and song ~= 0 do
-                            local video = videoqueue[song]
-                            edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={255,0,255},["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..song.." / "..#videoqueue.."`\n**"..video["title"].."**\nLoading Song..\n\nPress ".."1️⃣".." to quit",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
+                        songnum = 1
+                        while songnum < #videoqueue and songnum ~= 0 do
+                            local video = videoqueue[songnum]
+                            editembed(musiccontrols,nil,{["Color"]={255,0,255},["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..songnum.." / "..#videoqueue.."`\n**"..video["title"].."**\nLoading Song..\n\nPress ".."1️⃣".." to quit",})
                             playSong(video)
-                            song = song + 1
+                            songnum = songnum + 1
                         end
                         if #Channels["music"].connectedMembers ~= 1 then
                             playlistSearch(1)
@@ -817,22 +830,22 @@ Client:on("ready", function()
                         end
                         if page == "Playing" or page == "Paused" then
                             if reaction.emojiName == "1️⃣" then
-                                song = -1
+                                songnum = -1
                                 connection:stopStream()
                             elseif reaction.emojiName == "⏪" then --Rewind
-                                if song ~= 1 then
-                                    song = song - 2
+                                if songnum ~= 1 then
+                                    songnum = songnum - 2
                                     connection:stopStream()
                                 end
                             elseif reaction.emojiName == "⏯️" then --Pause
                                 if page == "Playing" then
                                     connection:pauseStream()
                                     page = "Paused"
-                                    edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={200,0,200},["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..song.." / "..#videoqueue.."`\n**"..videoqueue[song]["title"].."**\nPaused\n\nPress ".."1️⃣".." to quit",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
+                                    editembed(musiccontrols,nil,{["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\nPaused\n\nPress ".."1️⃣".." to quit"})
                                 else
                                     connection:resumeStream()
                                     page = "Playing"
-                                    edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={200,0,200},["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..song.." / "..#videoqueue.."`\n**"..videoqueue[song]["title"].."**\n\n\nPress ".."1️⃣".." to quit",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
+                                    editembed(musiccontrols,nil,{["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\n\n\nPress ".."1️⃣".." to quit"})
                                 end
                             elseif reaction.emojiName == "⏩" then --Skip
                                 connection:stopStream()
@@ -875,7 +888,7 @@ Client:on("ready", function()
         if channel == Channels["music"] then
             if #Channels["music"].connectedMembers == 1 then
                 if page == "Playing" or page == "Paused" then
-                    song = -1
+                    songnum = -1
                     connection:stopStream()
                 end
                 musiccontrols:clearReactions()
@@ -884,19 +897,7 @@ Client:on("ready", function()
                 for i, member in pairs(Channels["music"].connectedMembers) do
                     if not member.user.bot then
                         controller = member
-                        if page == "Playing" then
-                            edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={200,0,200},["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..song.." / "..#videoqueue.."`\n**"..videoqueue[song]["title"].."**\n\n\nPress ".."1️⃣".." to quit",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
-                        elseif page == "Paused" then
-                            edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={200,0,200},["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..song.." / "..#videoqueue.."`\n**"..videoqueue[song]["title"].."** \nPaused\n\nPress ".."1️⃣".." to quit",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
-                        else
-                            local string = "`Page 1 / "..math.ceil(#playlists/5).."`\n\n"
-                            for i=(page*5)-4,page*5 do
-                                if playlists[i] then
-                                    string = string.."**"..i..".** "..playlists[i][2].."\n\n"
-                                end
-                            end
-                            edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={150,0,150},["Text"]=string,["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
-                        end
+                        editembed(musiccontrols,nil,{["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name})
                         return
                     end
                 end
@@ -910,7 +911,7 @@ Client:on("memberJoin",function(member)
         return
     end
     updatePerms(member.user.id,"help","noaccess")
-    local message = send(member.user.id,"Hi! Sorry, I'm just checking if your DMs are open or not. I'll properly welcome you in #type :)")
+    local message = send(member.user.id,"Hi! Sorry, I'm just checking if your DMs are open or not. I'll properly welcome you in <#702348672007929888> :)")
     if message == nil then
         send(Channels["type"],"Welcome <@"..member.user.id..">! Enjoy your stay :)\n\nP.S. You have server DMs disabled, please enable them so I can message you.")
         wait(10)
@@ -952,7 +953,7 @@ local function NewMessage(message)
     if storagedata["PlayerData"][user.id] == nil then
         storagedata["PlayerData"][user.id] = StartingData
     end
-    string.gsub(text,"%c"," ")
+    
     local arguments = split(string.gsub(string.gsub(text,"%p",""),"%c"," "))
     
     if channel.type == Enum.channelType.private then
@@ -1485,9 +1486,6 @@ local function NewMessage(message)
         if channel == Channels["important"] or channel == Channels["help"] or channel == Channels["test"] then
             return
         end
-        --[[
-        
-        ]]
         
         --Delete messages containing special characters, morse code, or uses singular letters
             local i = 0
