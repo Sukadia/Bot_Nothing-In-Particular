@@ -10,6 +10,8 @@
 --Fix the bot sometimes crashing but not sending a crash message on reboot
 
 --  Voice channels
+--Make speak channel reaction more obvious that it opts you in
+--Fix broken pipe spam in output for music channel
 --Fix embed breaking if user leaves during "Waiting for buttons.."
 --Fix first song sometimes being the last played song instead of the newly loaded one
 --Give speak channel the editembed usage
@@ -19,6 +21,7 @@
 --Expand playlist feature with a queue overview, loop playlist, perhaps save default settings per-user
 --Implement way to play audio through direct link? (May have to wait for Discordia 3.0)
 --Maybe don't download highest quality of youtube audio to reduce load time?
+--The entire bot stalls during music loading
 
 
 
@@ -45,6 +48,7 @@ local SaveInterval = 5 --Minutes between bot data being saved, excluding newword
 local SpamM, SpamS = 3, 5 --Messages/Second for Spam filter
 local NewW, NewU = 3, 2 --New Random / User Suggested Words
 local CountUpdate = 2 --Minutes between count message updating
+local QueueInterval = 12 --Hours between admitting new user to #exclusive-channel
 local ChannelPerms = {["type"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
     ["fuck-vowels"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
     ["fuck-everything"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
@@ -67,6 +71,7 @@ if storagedata == nil then -- If no data was loaded, populate storagedata with d
         ["WordCount"]={},        --{ {word, #ofuses}, ...}
         ["LastSaved"]={},        --{ timesaved, closedproperly?, silentrestart? }
         ["CheckUsers"]={},       --{ "userid", ... }
+        ["ExclusiveChannel"]={}  --{ ["AdmitTime"] = timeadmitted, ["Serving"] = userid, ["Queue"] = {"userid", ... }, ["Served"] = served, ["UniqueServed"] = {userid, ...} }
     }
 end
 local spamdata = {}                          --{ ["UserId"]={messagetime, ... }, ... }  --Spam Detection
@@ -123,6 +128,36 @@ local function listItems(table,andbool) --Turns a table of strings into one stri
         end
     end
     return string.sub(string,1,-3)
+end
+
+local function convertSeconds(seconds,desired) --Turns seconds into a readable string
+    local time, unit = 0, "seconds"
+    if not desired then
+        if seconds <= 60 then
+            time, unit = seconds, "second"
+        elseif seconds <= 3600 then
+            time, unit = round(seconds/60), "minute"
+        elseif seconds <= 86400 then
+            if round((seconds - math.floor(seconds/3600)*3600)/60) == 0 then
+                return math.floor(seconds/3600).." hour"..(math.floor(seconds/3600) == 1 and "" or "s").." "..round((seconds - math.floor(seconds/3600))/60).." minute"..(round((seconds - math.floor(seconds/3600))/60) == 1 and "" or "s")
+            else
+                return round(seconds/3600).." hour"..(round(seconds/3600) == 1 and "" or "s")
+            end
+        else
+            if round((seconds - math.floor(seconds/86400)*86400)/3600) == 0 then
+                return round(seconds/86400).." day"..(round(seconds/86400) == 1 and "" or "s")
+            else
+                return math.floor(seconds/86400).." day"..(math.floor(seconds/86400) == 1 and "" or "s").." "..round((seconds - math.floor(seconds/86400)*86400)/3600).." hour"..(round((seconds - math.floor(seconds/86400)*86400)/3600) == 1 and "" or "s")
+            end
+        end
+    elseif desired == "minutes" then
+        time, unit = round(seconds/60), "minute"
+    elseif desired == "hours" then
+        time, unit = round(seconds/3600,1), "hour"
+    elseif desired == "days" then
+        time, unit = round(seconds/86400,1), "day"
+    end
+    return time.." "..unit..(time == 1 and "" or "s")
 end
 
 local function inTable(table,item) --Check if an item is in a table
@@ -220,6 +255,8 @@ local function updatePerms(userid,channels,permtype) --Update a user/everyone's 
                 RolePerms:denyPermissions(Enum.permission.sendMessages)
                 return
             end
+        elseif permtype == "images" then
+            PermObject = Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages,Enum.permission.attachFiles)
         elseif permtype == "noaccess" then
             RolePerms:denyPermissions(Enum.permission.readMessages)
             return
@@ -324,14 +361,14 @@ end
 local function newWords() --Whitelist new words
     local wordsneeded = NewW
     local newwordtext = ""
+    local newrandomwords = {}
     while wordsneeded ~= 0 do
         local result, body, randomwords
         local success, err = pcall(function()
-            local result, body = Coro.request("GET","https://random-word-api.herokuapp.com/word?number=20")
+            local result, body = Coro.request("GET","https://random-word-api.herokuapp.com/word?number=100")
             randomwords = Json.decode(body)
         end)
         if success then
-            local newrandomwords = {}
             for i, word in pairs(randomwords) do
                 if wordsneeded == 0 then
                     break
@@ -387,14 +424,10 @@ local function newWords() --Whitelist new words
             end
             
             if #newwhitelistedwords < NewU then -- Less than max amount was whitelisted
-                local missedplural = "s"
-                if (NewU-#newwhitelistedwords) == 1 then
-                    missedplural = ""
-                end
                 if #newwhitelistedwords ~= totalsubmissions then -- Less than max whitelisted, but some words were the same
                     send(Channels["type"],"Huh, looks like there were some identical submissions.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were selected from "..totalsubmissions.." submissions."})
                 else
-                    send(Channels["type"],"Darn, missed the chance for "..(NewU-#newwhitelistedwords).." word"..missedplural.." being whitelisted.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were the only submissions."})
+                    send(Channels["type"],"Darn, missed the chance for "..(NewU-#newwhitelistedwords).." word"..((NewU-#newwhitelistedwords) == 1 and "" or "s").." being whitelisted.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were the only submissions."})
                 end
             else -- Max amount of words whitelisted
                 send(Channels["type"],"Here's the new words:",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were selected from "..totalsubmissions.." submissions."})
@@ -437,6 +470,34 @@ local function randomEvent() --Calulate chance/perform a random event
         if not collected then
             send(Channels["type"],"No one claimed it? Tough luck.",{["Title"]="Event Ended",["Color"]={0,255,255},["Text"]="No one collected the ability within 10 minutes."})
         end
+    end
+end
+
+local function updateQueue()
+    if #storagedata["ExclusiveChannel"]["Queue"] > 0 then
+        edit(Channels["exclusive-queue"]:getLastMessage(),"",{["Title"]="Exclusive Queue",["Text"]="Welcome to the Exclusive Queue.\n\nHere you can sign up to gain access to the highly coveted <#784586406768934982>. Only one person is allowed in every "..QueueInterval.." hours.\n\nIn Queue: "..(#storagedata["ExclusiveChannel"]["Queue"]).." user"..(#storagedata["ExclusiveChannel"]["Queue"] == 1 and "" or "s").."\nCurrent Wait: **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time() + ((#storagedata["ExclusiveChannel"]["Queue"])*(QueueInterval*3600)) + (3600 - os.time()%3600)).."**\n\n🔑 to enter the queue.",["FooterText"]="Proudly served "..#storagedata["ExclusiveChannel"]["UniqueServed"].." individual"..(#storagedata["ExclusiveChannel"]["UniqueServed"] == 1 and "" or "s").." a total of "..storagedata["ExclusiveChannel"]["Served"].." time"..(storagedata["ExclusiveChannel"]["Served"] == 1 and "" or "s").."."})
+    else
+        edit(Channels["exclusive-queue"]:getLastMessage(),"",{["Title"]="Exclusive Queue",["Text"]="Welcome to the Exclusive Queue.\n\nHere you can sign up to gain access to the highly coveted <#784586406768934982>. Only one person is allowed in every "..QueueInterval.." hours.\n\nIn Queue: 0 users\nCurrent Wait: **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time() + (3600 - os.time()%3600)).."**\n\n🔑 to enter the queue.",["FooterText"]="Proudly served "..#storagedata["ExclusiveChannel"]["UniqueServed"].." individual"..(#storagedata["ExclusiveChannel"]["UniqueServed"] == 1 and "" or "s").." a total of "..storagedata["ExclusiveChannel"]["Served"].." time"..(storagedata["ExclusiveChannel"]["Served"] == 1 and "" or "s").."."})
+    end
+end
+
+local function admitNewUser() --Admit a new user to #exclusive-channel
+    storagedata["ExclusiveChannel"]["AdmitTime"] = os.time()+((QueueInterval*3600)-os.time()%(QueueInterval*3600))
+    
+    if storagedata["ExclusiveChannel"]["Serving"] then
+        updatePerms(storagedata["ExclusiveChannel"]["Serving"],"exclusive-channel","clear")
+        storagedata["ExclusiveChannel"]["Served"] = storagedata["ExclusiveChannel"]["Served"] + 1
+        if not inTable(storagedata["ExclusiveChannel"]["UniqueServed"],storagedata["ExclusiveChannel"]["Served"]) then
+            table.insert(storagedata["ExclusiveChannel"]["UniqueServed"],storagedata["ExclusiveChannel"]["Served"])
+        end
+        storagedata["ExclusiveChannel"]["Serving"] = nil
+    end
+    
+    if #storagedata["ExclusiveChannel"]["Queue"] > 0 then
+        storagedata["ExclusiveChannel"]["Serving"] = storagedata["ExclusiveChannel"]["Queue"][1]
+        updatePerms(storagedata["ExclusiveChannel"]["Queue"][1],"exclusive-channel","images")
+        send(Channels["exclusive-channel"],"<@"..storagedata["ExclusiveChannel"]["Queue"][1]..">",{["Title"]="Exclusive Queue",["Text"]="<@"..storagedata["ExclusiveChannel"]["Queue"][1]..">, it is now your turn in the channel.\n\nYour "..QueueInterval.." hours start now."})
+        table.remove(storagedata["ExclusiveChannel"]["Queue"],1)
     end
 end
 
@@ -527,7 +588,7 @@ end)()
 coroutine.wrap(function() --Count update message loop
     while true do
         wait((CountUpdate*60)-os.time()%(CountUpdate*60))
-        if countingfilter and Channels ~= nil then
+        if Channels ~= nil then
             local neednewmessage = false
             if storagedata["CountChannel"]["CountMessage"] ~= nil and Channels["message-counting"] ~= nil then
                 local updatemessage = Channels["message-counting"]:getMessage(storagedata["CountChannel"]["CountMessage"])
@@ -567,6 +628,19 @@ coroutine.wrap(function() --Count update message loop
     end
 end)()
 
+coroutine.wrap(function() --Queue update message loop
+    if not storagedata["ExclusiveChannel"]["AdmitTime"] then
+        storagedata["ExclusiveChannel"]["AdmitTime"] = os.time()+((QueueInterval*3600)-(os.time()%(QueueInterval*3600)))
+    end
+    while true do
+        wait(3600-(os.time()%3600))
+        if (os.time() - 60) < storagedata["ExclusiveChannel"]["AdmitTime"] and (os.time() + 60) > storagedata["ExclusiveChannel"]["AdmitTime"] then
+            admitNewUser()
+        end
+        updateQueue()
+    end
+end)()
+
 
 -- Listeners
 
@@ -598,6 +672,44 @@ Client:on("ready", function()
         storagedata["LastSaved"][3] = false
     end
     
+        
+    local queuemessage = Channels["exclusive-queue"]:getLastMessage()
+    if storagedata["ExclusiveChannel"]["AdmitTime"] < os.time() then
+        storagedata["ExclusiveChannel"]["AdmitTime"] = os.time()+((QueueInterval*3600)-2*(os.time()%(QueueInterval*3600)))
+        admitNewUser()
+    end
+    updateQueue()
+    Client:on("reactionAdd",function(reaction,id)
+        if not Client:getUser(id).bot and reaction.message == queuemessage then
+            if id == storagedata["ExclusiveChannel"]["Serving"] then
+                reaction:delete(id)
+                return
+            end
+            for i, userid in pairs(storagedata["ExclusiveChannel"]["Queue"]) do
+                if userid == id then
+                    reaction:delete(id)
+                    return
+                end
+            end
+            
+            if not storagedata["ExclusiveChannel"]["Serving"] and #storagedata["ExclusiveChannel"]["Queue"] == 0 then
+                send(id,"Looks like you're the only person in line, no one even has access to the channel right now.",{["Title"]="Exclusive Channel",["Text"]="You have been put into the queue and are now **#1** in line. You will be admitted in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time()).."**.\n\nUse the `queue` command to check your place in line."})
+            elseif #storagedata["ExclusiveChannel"]["Queue"] == 1 then
+                send(id,"Nice, it looks like you're first in line!",{["Title"]="Exclusive Channel",["Text"]="You have been put into the queue and are now **#"..(#storagedata["ExclusiveChannel"]["Queue"]).."** in line. You will be admitted in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time() + ((#storagedata["ExclusiveChannel"]["Queue"])*(QueueInterval*3600))).."**.\n\nUse the `queue` command to check your place in line."})
+            elseif #storagedata["ExclusiveChannel"]["Queue"] >= 14 then
+                send(id,"Ouch. That's a long time. Surely it's worth it though?",{["Title"]="Exclusive Channel",["Text"]="You have been put into the queue and are now **#"..(#storagedata["ExclusiveChannel"]["Queue"]).."** in line. You will be admitted in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time() + ((#storagedata["ExclusiveChannel"]["Queue"])*(QueueInterval*3600))).."**.\n\nUse the `queue` command to check your place in line."})
+            elseif #storagedata["ExclusiveChannel"]["Queue"] >= 6 then
+                send(id,"That's a decent wait, but at least you're in.",{["Title"]="Exclusive Channel",["Text"]="You have been put into the queue and are now **#"..(#storagedata["ExclusiveChannel"]["Queue"]).."** in line. You will be admitted in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time() + ((#storagedata["ExclusiveChannel"]["Queue"])*(QueueInterval*3600))).."**.\n\nUse the `queue` command to check your place in line."})
+            else
+                send(id,"Alright, you're in the queue now.",{["Title"]="Exclusive Channel",["Text"]="You have been put into the queue and are now **#"..(#storagedata["ExclusiveChannel"]["Queue"]).."** in line. You will be admitted in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time() + ((#storagedata["ExclusiveChannel"]["Queue"])*(QueueInterval*3600))).."**.\n\nUse the `queue` command to check your place in line."})
+            end
+            table.insert(storagedata["ExclusiveChannel"]["Queue"],id)
+            updateQueue()
+            reaction:delete(id)
+        end
+    end)
+    queuemessage:addReaction("🔑")
+        
     
     local speakers = {}
     local status = "Nothing"
@@ -766,13 +878,6 @@ Client:on("ready", function()
                     page = "Playing"
                     coroutine.wrap(function()
                         editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Loading Playlist..\n_ _"})
-                        local waiting = true
-                        coroutine.wrap(function()
-                            wait(5)
-                            if waiting then
-                                edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={200,0,200},["Text"]="Loading Playlist..\n(There's a lot of songs...)",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
-                            end
-                        end)()
                         local file = io.popen("youtube-dl -j -q --geo-bypass --restrict-filenames --playlist-random --flat-playlist \""..playlists[playlistnum][1].."\" 2>&1") --2>&1 brings output from stderr to stdout
                         waiting = false
                         videoqueue = Json.decode("["..string.gsub(file:read("*a"),"\n",",").."]")
@@ -897,7 +1002,7 @@ Client:on("ready", function()
                 for i, member in pairs(Channels["music"].connectedMembers) do
                     if not member.user.bot then
                         controller = member
-                        editembed(musiccontrols,nil,{["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name})
+                        editembed(musiccontrols,nil,{["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
                         return
                     end
                 end
@@ -1308,21 +1413,13 @@ local function NewMessage(message)
                     response = string.gsub(response,"<:"..emoji.hash..">","")
                 end
                 local characters = string.len(string.gsub(response,"[%p%c%s]",""))
-                local charplural = "s"
-                if characters == 1 then
-                    charplural = ""
-                end
                 local amountoff = characters - storagedata["CountChannel"]["Count"]
-                local amountplural = "s"
-                if amountoff == 1 then
-                    amountplural = ""
-                end
                 if amountoff == 0 then
-                    send(user.id,"Your message would be counted as **"..characters.."** character"..charplural..", that's the amount the next message should be. Looks like you're good to post. :)")
+                    send(user.id,"Your message would be counted as **"..characters.."** character"..(characters == 1 and "" or "s")..", that's the amount the next message should be. Looks like you're good to post. :)")
                 elseif amountoff > 0 then
-                    send(user.id,"Your message would be counted as **"..characters.."** character"..charplural..". You need to remove "..amountoff.." more character"..amountplural..".")
+                    send(user.id,"Your message would be counted as **"..characters.."** character"..(characters == 1 and "" or "s")..". You need to remove "..amountoff.." more character"..(amountoff == 1 and "" or "s")..".")
                 else
-                    send(user.id,"Your message would be counted as **"..characters.."** character"..charplural..". You need to add "..(-amountoff).." more character"..amountplural..".")
+                    send(user.id,"Your message would be counted as **"..characters.."** character"..(characters == 1 and "" or "s")..". You need to add "..(-amountoff).." more character"..(amountoff == 1 and "" or "s")..".")
                 end
             end
             return
@@ -1363,6 +1460,21 @@ local function NewMessage(message)
             end
             local imagenum = math.random(1,#images)
             send(user.id,"Here's some art I stole out of Sukadia's folder:",{["Color"]={75,100,100},["ImageUrl"]=images[imagenum][1],["FooterText"]="Image #"..imagenum.."/"..#images.." | Saved "..os.date("%x at %I:%M %p",images[imagenum][2])})
+            return
+        end
+        
+        if arguments[1] == "queue" then
+            for i, userid in pairs(storagedata["ExclusiveChannel"]["Queue"]) do
+                if user.id == userid then
+                    send(user.id,"It looks like you're **#"..i.."** in line. You'll be admitted in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time() + ((i - 1)*(QueueInterval*3600))).."**.")
+                    return
+                end
+            end
+            if user.id == storagedata["ExclusiveChannel"]["Serving"] then
+                send(user.id,"You're already being served! You can enter the queue again after your 12 hours expire in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time()).."**.")
+            else
+                send(user.id,"You're not in the queue at the moment. You can enter the queue in <#784586300996321311>.")
+            end
             return
         end
         
@@ -1693,10 +1805,6 @@ local function NewMessage(message)
                     datapos = i
                 end
             end
-            local charplural = "s"
-            if messagelength == 1 then
-                charplural = ""
-            end
             
             if messagelength == 0 then
                 return
@@ -1711,7 +1819,7 @@ local function NewMessage(message)
                 else
                     message:delete()
                     table.insert(storagedata["CountChannel"]["Counters"],{user.id,0})
-                    send(Channels["message-counting"],"Welcome **"..user.username.."**!\n\nEvery message in this channel must be one character longer than the last. When counting the characters in a message, I don't count spaces or punctuation. I also ignore zero length messages, like ones using only symbols.\n\nYour message was deleted because it was "..messagelength.." character"..charplural.." long instead of "..storagedata["CountChannel"]["Count"].." characters. However, the count was not reset since it's your first message. :)")
+                    send(Channels["message-counting"],"Welcome **"..user.username.."**!\n\nEvery message in this channel must be one character longer than the last. When counting the characters in a message, I don't count spaces or punctuation. I also ignore zero length messages, like ones using only symbols.\n\nYour message was deleted because it was "..messagelength.." character"..(messagelength == 1 and "" or "s").." long instead of "..storagedata["CountChannel"]["Count"].." characters. However, the count was not reset since it's your first message. :)")
                     return
                 end
             else
@@ -1738,7 +1846,7 @@ local function NewMessage(message)
                     elseif storagedata["CountChannel"]["Count"]-1 == 1500 then
                         send(channel,"[☆ **1500** ☆]\n75% of the way there! Keep pushing, you're almost to the end!")
                     elseif storagedata["CountChannel"]["Count"]-1 == 2000 then
-                        --[[
+                         --[[
                         Censored until reached
                         ]]--
                     end
@@ -1755,11 +1863,7 @@ local function NewMessage(message)
                     table.sort(storagedata["CountChannel"]["Counters"], function(a,b)
                         return a[2] > b[2]
                     end)
-                    local contributionplural = "s"
-                    if storagedata["CountChannel"]["Counters"][1][2] == 1 then
-                        contributionplural = ""
-                    end
-                    send(Channels["message-counting"],"Ouch, **"..user.username.."** broke the message chain. Their message was "..messagelength.." character"..charplural.." long instead of "..storagedata["CountChannel"]["Count"]..".\n\n"..Client:getUser(storagedata["CountChannel"]["Counters"][1][1]).username.." contributed the most with "..storagedata["CountChannel"]["Counters"][1][2].." message"..contributionplural..".")
+                    send(Channels["message-counting"],"Ouch, **"..user.username.."** broke the message chain. Their message was "..messagelength.." character"..(messagelength == 1 and "" or "s").." long instead of "..storagedata["CountChannel"]["Count"]..".\n\n"..Client:getUser(storagedata["CountChannel"]["Counters"][1][1]).username.." contributed the most with "..storagedata["CountChannel"]["Counters"][1][2].." message"..(storagedata["CountChannel"]["Counters"][1][2] == 1 and "" or "s")..".")
                     resetCount()
                 end
             end
