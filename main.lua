@@ -3,18 +3,14 @@
 --Command for statistics like messages/day, deleted/accepted ratio, count highscore, ect.
 --Random event that allows you to react to 5 messages
 --Use multiple suggest word abilities for a longer word (20 default, +5 each ability?)
---Fix wordlist's last page not existing (stops in the W's when there are Z words)
 --Fix deleted message counting towards the multi-message bypass (1 letter in #message-counting, then another to start chain)
---Fix emojis right next to each other being disallowed (no space)
 --Switch from table[""] to table."" because it looks nicer
 --Fix the bot sometimes crashing but not sending a crash message on reboot
 
 --  Voice channels
 --Make speak channel reaction more obvious that it opts you in
 --Fix broken pipe spam in output for music channel
---Fix embed breaking if user leaves during "Waiting for buttons.."
 --Fix first song sometimes being the last played song instead of the newly loaded one
---Give speak channel the editembed usage
 --Redesign embed, give song info on left side and queue on right side?
 --Make music channel controls be more obvious, perhaps an info button (maybe not necessary?)
 --Do not load songs while player is paused so you can scrub through songs without a load delay
@@ -85,16 +81,16 @@ local images = {}                            --{ "artlink", ... }               
 
 
 local function dump(o) --Debug function for printing tables
-   if type(o) == 'table' then
-      local s = '{ '
-      for k,v in pairs(o) do
-         if type(k) ~= 'number' then k = '"'..k..'"' end
-         s = s .. '['..k..'] = ' .. dump(v) .. ','
-      end
-      print(s .. '} ')
-   else
-      return tostring(o)
-   end
+    if type(o) == 'table' then
+        local s = '{ '
+        for k,v in pairs(o) do
+            if type(k) ~= 'number' then k = '"'..k..'"' end
+            s = s .. '['..k..'] = ' .. dump(v) .. ','
+        end
+        print(s .. '} ')
+    else
+        return tostring(o)
+    end
 end
 
 local function round(num, numDecimalPlaces) --Number rounding
@@ -170,12 +166,21 @@ local function inTable(table,item) --Check if an item is in a table
 end
 
 local function isEmoji(string) --Check if a string would be formatted as an emoji in Discord
-    for i, emoji in pairs(Server.emojis) do
-        if "<:"..emoji.hash..">" == string or "<a:"..emoji.hash..">" == string then
-            return true
+    local words = {}
+    for word in string:gmatch("[^<]+") do table.insert(words, "<"..word) end
+    for i, word in pairs(words) do
+        local approved = false
+        for i, emoji in pairs(Server.emojis) do
+            if "<:"..emoji.hash..">" == word or "<a:"..emoji.hash..">" == word then
+                approved = true
+                break
+            end
+        end
+        if not approved then
+            return false
         end
     end
-    return false
+    return true
 end
 
 
@@ -634,7 +639,7 @@ coroutine.wrap(function() --Queue update message loop
     end
     while true do
         wait(3600-(os.time()%3600))
-        if (os.time() - 60) < storagedata["ExclusiveChannel"]["AdmitTime"] and (os.time() + 60) > storagedata["ExclusiveChannel"]["AdmitTime"] then
+        if (os.time() + 60) > storagedata["ExclusiveChannel"]["AdmitTime"] then
             admitNewUser()
         end
         updateQueue()
@@ -738,7 +743,7 @@ Client:on("ready", function()
             local voicemembers = Channels["speak"].connectedMembers
             member:mute()
             if #voicemembers == 1 then
-                edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,150,150},["Text"]="Voice channel started.\n\nWelcome! If you intend to talk, please react to this message."})
+                editembed(speakcontrols,nil,{["Color"]={0,150,150},["Text"]="Voice channel started.\n\nWelcome! If you intend to talk, please react to this message."})
                 speakcontrols:addReaction("🟦")
                 local function speakReaction(reaction,id)
                     if not Client:getUser(id).bot and reaction.message == speakcontrols then
@@ -757,10 +762,10 @@ Client:on("ready", function()
                         table.insert(speakers,thismember)
                         if status == "Nothing" then
                             if #voicemembers == 1 then
-                                edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,150,150},["Text"]="\n\nYou are the only one in the voice channel currently. The process will start once someone else joins."})
+                                editembed(speakcontrols,nil,{["Color"]={0,150,150},["Text"]="\n\nYou are the only one in the voice channel currently. The process will start once someone else joins."})
                             else
                                 status = "Waiting"
-                                edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={200,100,0},["Text"]="Talking will begin at the start of a new minute.\n\n**"..#speakers.."** out of **"..#voicemembers.."** will have allocated speaking time.\n\nIf you'd like to speak, react to this message."})
+                                editembed(speakcontrols,nil,{["Color"]={200,100,0},["Text"]="Talking will begin at the start of a new minute.\n\n**"..#speakers.."** out of **"..#voicemembers.."** will have allocated speaking time.\n\nIf you'd like to speak, react to this message."})
                                 wait(60-(os.time()%60))
                                 while #speakers >= 1 and #Channels["speak"].connectedMembers >= 2 do
                                     status = "Talking"
@@ -770,7 +775,7 @@ Client:on("ready", function()
                                     for i, member in pairs(currentspeakers) do
                                         string = string..i..". [00:"..round((timeperperson*(i - 1)) + 10,1).."] "..member.name.."\n"
                                     end
-                                    edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,255,255},["Text"]=string})
+                                    editembed(speakcontrols,nil,{["Color"]={0,255,255},["Text"]=string})
                                     wait(10-(os.time()%10))
                                     for i, member in pairs(currentspeakers) do
                                         local waittime = os.time() + timeperperson
@@ -801,7 +806,7 @@ Client:on("ready", function()
                                                 string = string..v..". ~~[00:"..round((timeperperson*(v - 1)) + 10,1).."] - "..member.name.."~~\n"
                                             end
                                         end
-                                        edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,255,255},["Text"]=string})
+                                        editembed(speakcontrols,nil,{["Color"]={0,255,255},["Text"]=string})
                                         wait(waittime - os.time())
                                         if member.voiceChannel ~= nil then
                                             member:mute()
@@ -810,16 +815,16 @@ Client:on("ready", function()
                                 end
                                 status = "Nothing"
                                 if #speakers == 0 and #Channels["speak"].connectedMembers >= 2 then
-                                    edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,150,150},["Text"]="\n\nNo one is current queued to speak. For the process to begin, there must be at least one speaker."})
+                                    editembed(speakcontrols,nil,{["Color"]={0,150,150},["Text"]="\n\nNo one is current queued to speak. For the process to begin, there must be at least one speaker."})
                                 elseif #Channels["speak"].connectedMembers == 1 then
-                                    edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,150,150},["Text"]="\n\nYou are the only one left in the voice channel. The process will start again if someone else joins."})
+                                    editembed(speakcontrols,nil,{["Color"]={0,150,150},["Text"]="\n\nYou are the only one left in the voice channel. The process will start again if someone else joins."})
                                 else
                                     speakcontrols:clearReactions()
-                                    edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,100,100},["Text"]="The voice channel is currently inactive.\n\nJoin to activate its functionality."})
+                                    editembed(speakcontrols,nil,{["Color"]={0,100,100},["Text"]="The voice channel is currently inactive.\n\nJoin to activate its functionality."})
                                 end
                             end
                         elseif status == "Waiting" then
-                            edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,200,200},["Text"]="Talking will begin at the start of a new minute.\n\n**"..#speakers.."** out of **"..#voicemembers.."** will have allocated speaking time.\n\nIf you'd like to speak, react to this message."})
+                            editembed(speakcontrols,nil,{["Color"]={0,200,200},["Text"]="Talking will begin at the start of a new minute.\n\n**"..#speakers.."** out of **"..#voicemembers.."** will have allocated speaking time.\n\nIf you'd like to speak, react to this message."})
                         end
                     end
                 end
@@ -832,9 +837,9 @@ Client:on("ready", function()
                             end
                         end
                         if #speakers == 0 then
-                            edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,150,150},["Text"]="\n\nNo one is current queued to speak. For the process to begin, there must be at least one speaker."})
+                            editembed(speakcontrols,nil,{["Color"]={0,150,150},["Text"]="\n\nNo one is current queued to speak. For the process to begin, there must be at least one speaker."})
                         elseif status == "Waiting" then
-                            edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,200,200},["Text"]="Talking will begin at the start of a new minute.\n\n**"..#speakers.."** out of **"..#voicemembers.."** will have allocated speaking time.\n\nIf you'd like to speak, react to this message."})
+                            editembed(speakcontrols,nil,{["Color"]={0,200,200},["Text"]="Talking will begin at the start of a new minute.\n\n**"..#speakers.."** out of **"..#voicemembers.."** will have allocated speaking time.\n\nIf you'd like to speak, react to this message."})
                         end
                     end
                 end
@@ -843,7 +848,7 @@ Client:on("ready", function()
                 Client:on("reactionAdd",speakReaction)
                 Client:on("reactionRemove",speakReactionRemove)
             elseif #voicemembers > 1 and #speakers ~= 0 then
-                edit(speakcontrols,"",{["Title"]="Speak Channel",["Color"]={0,200,200},["Text"]="Talking will begin at the start of a new minute.\n\n**"..#speakers.."** out of **"..#voicemembers.."** will have allocated speaking time.\n\nIf you'd like to speak, react to this message."})
+                editembed(speakcontrols,nil,{["Color"]={0,200,200},["Text"]="Talking will begin at the start of a new minute.\n\n**"..#speakers.."** out of **"..#voicemembers.."** will have allocated speaking time.\n\nIf you'd like to speak, react to this message."})
             end
         end
         
@@ -901,14 +906,14 @@ Client:on("ready", function()
                 
                 controller = member
                 edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={150,0,150},["Text"]="Waiting for buttons..",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
-                musiccontrols:addReaction("1️⃣")
-                musiccontrols:addReaction("2️⃣")
-                musiccontrols:addReaction("3️⃣")
-                musiccontrols:addReaction("4️⃣")
-                musiccontrols:addReaction("5️⃣")
-                musiccontrols:addReaction("⏪")
-                musiccontrols:addReaction("⏯️")
-                musiccontrols:addReaction("⏩")
+                local reactionemojis = {"1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","⏪","⏯️","⏩"}
+                for i, reaction in pairs(reactionemojis) do
+                    if #Channels["music"].connectedMembers ~= 1 then
+                        musiccontrols:addReaction(reaction)
+                    else
+                        return
+                    end
+                end
                 playlistSearch(1)
                 local function musicReaction(reaction,id)
                     if not Client:getUser(id).bot and reaction.message == musiccontrols then
@@ -1253,8 +1258,9 @@ local function NewMessage(message)
                             string = "There are "..#storagedata["WhitelistedWords"].." whitelisted words you can say:\n\n`Page "..page.."`\nUse `wordlist [#]` to look through pages.\n\n"
                         end
                     else
+                        currentpage = currentpage + 1
                         if page == currentpage then
-                            send(user.id,string)
+                            send(user.id,string.sub(string,1,-3))
                         else
                             send(user.id,"Sorry, that page doesn't exist. `Page "..currentpage.."` does, however.")
                         end
@@ -1471,7 +1477,7 @@ local function NewMessage(message)
                 end
             end
             if user.id == storagedata["ExclusiveChannel"]["Serving"] then
-                send(user.id,"You're already being served! You can enter the queue again after your 12 hours expire in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time()).."**.")
+                send(user.id,"You're already being served! You can enter the queue again after your "..QueueInterval.." hours expire in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time()).."**.")
             else
                 send(user.id,"You're not in the queue at the moment. You can enter the queue in <#784586300996321311>.")
             end
@@ -1846,7 +1852,7 @@ local function NewMessage(message)
                     elseif storagedata["CountChannel"]["Count"]-1 == 1500 then
                         send(channel,"[☆ **1500** ☆]\n75% of the way there! Keep pushing, you're almost to the end!")
                     elseif storagedata["CountChannel"]["Count"]-1 == 2000 then
-                         --[[
+                        --[[
                         Censored until reached
                         ]]--
                     end
