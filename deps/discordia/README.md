@@ -4,13 +4,15 @@
 
 ### Introduction
 
-**[Discord](https://discordapp.com/)** is a freeware, multi-platform, voice and text client designed for gamers. It has a [documented RESTful API](https://discordapp.com/developers/docs/intro) that allows developers to make Discord bots for use on their servers.
+**[Discord](https://discord.com/)** is a freeware, multi-platform, voice and text client. It has a [documented RESTful API](https://discord.com/developers/docs/intro) that allows developers to make Discord bots for use on their servers.
 
 **[Luvit](https://luvit.io)** is an open-source, asynchronous I/O Lua runtime environment. It is a combination of [LuaJIT](http://luajit.com/) and [libuv](http://libuv.org/), layered with various libraries to provide server-side functionality similar to that of [Node.js](https://nodejs.org/en/), but with Lua instead of JavaScript. Luvit's companion package manager, lit, makes it easy to set up the Luvit runtime and its published libraries.
 
 Discordia is a Lua wrapper for the official Discord API, and provides a high-level, object-oriented, event-driven interface for developing Discord bots. By using Lua's native coroutines, asynchronous HTTP and WebSocket communication is internally abstracted in a way that allows end-users to write blocking-style code without blocking I/O operations.
 
-Join the [Discord API community](https://discord.gg/NKM3XmF) to discuss Discordia and other Discord libraries!
+Join the [Discord API](https://discord.gg/NKM3XmF) server to discuss Discordia and other Discord libraries!
+
+Join the independent [Discordia](https://discord.gg/EzRYYDW) server for more!
 
 ### Installation
 
@@ -60,4 +62,4 @@ How can I contribute?
 - Pull requests are welcomed, but please check with the library author before starting a major implementation. Contributions to the Wiki are helpful, too.
 
 Are there other Discord libraries?
-- Absolutely. Check the official [libraries](https://discordapp.com/developers/docs/topics/community-resources) page of the Discord API documentation or the unofficial Discord API server linked above.
+- Absolutely. Check the official [libraries](https://discord.com/developers/docs/topics/community-resources) page of the Discord API documentation or the unofficial Discord API server linked above.
