@@ -44,7 +44,7 @@ local SaveInterval = 5 --Minutes between bot data being saved, excluding newword
 local SpamM, SpamS = 3, 5 --Messages/Second for Spam filter
 local NewW, NewU = 3, 2 --New Random / User Suggested Words
 local CountUpdate = 2 --Minutes between count message updating
-local QueueInterval = 12 --Hours between admitting new user to #exclusive-channel
+local QueueInterval = 8 --Hours between admitting new user to #exclusive-channel
 local ChannelPerms = {["type"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
     ["fuck-vowels"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
     ["fuck-everything"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
@@ -75,6 +75,7 @@ local commanduse = {}                        --{ ["UserId"]="command", ... }    
 local lastmessage = {}                       --{ ["UserId"]="lastmessage", ... }        --Multiple message bypass filter
 local suggestbuffer = {}                     --{ "userid", ... }                        --Suggestion 60 second change
 local images = {}                            --{ "artlink", ... }                       --Indexed art links
+local interactedusers = {}                   --{ "userid", ... }                        --Fix mute + response before restart
 
 
 -- Global Functions
@@ -219,6 +220,7 @@ end
 local function getResponse(channel,timeout) --Wait (timeout) seconds for a response in (channel)
     local response = false
     if channel.type == Enum.channelType.private then
+        table.insert(interactedusers,channel.recipient.id)
         storagedata["PlayerData"][channel.recipient.id]["State"] = "Command"
     end
     if timeout ~= nil then
@@ -231,6 +233,7 @@ local function getResponse(channel,timeout) --Wait (timeout) seconds for a respo
         end
     end)
     if channel.type == Enum.channelType.private then
+        table.remove(interactedusers,inTable(interactedusers,channel.recipient.id))
         storagedata["PlayerData"][channel.recipient.id]["State"] = "Normal"
     end
     return response
@@ -304,7 +307,6 @@ local function ping(pingtype) --Ghost ping those who have opted into (pingtype) 
         if reaction.emojiName == ReactionName then
             PingUsers = reaction:getUsers() --"You must call this method again to guarantee that the objects are up to date."
             PingUsers = reaction:getUsers()
-            break
         end
         if reaction.emojiName == "🟢" then --green circle reaction
             OnlineOnlyUsers = reaction:getUsers()
@@ -333,7 +335,7 @@ local function ping(pingtype) --Ghost ping those who have opted into (pingtype) 
     message:delete()
 end
 
-local function spamSensor(userid) --Log that a user has talked, mute if talking too fast
+local function spamSensor(userid,message) --Log that a user has talked, mute if talking too fast
     if spamdata[userid] == nil then
         spamdata[userid] = {os.time()}
         return
@@ -351,16 +353,19 @@ local function spamSensor(userid) --Log that a user has talked, mute if talking 
     spamdata[userid] = temp
     table.insert(spamdata[userid],os.time())
     if #spamdata[userid] > SpamM then
-        spamdata[userid] = "MuteProcess"
-        updatePerms(userid,{"type","fuck-vowels","fuck-everything","message-counting","images","speak"},"off")
+        message:delete()
+        table.insert(interactedusers,userid)
         spamdata[userid] = "Muted"
+        updatePerms(userid,{"type","fuck-vowels","fuck-everything","message-counting","images","speak"},"off")
         send(userid,"Yikes, just got a complaint from the higher-ups:",{["Title"]="Muted for 60 seconds",["Color"]={255,0,0},["Text"]="You've sent more than "..SpamM.." messages in the past "..SpamS.." seconds.\n\nYou have exceeded the message limit. You are now muted for **60 seconds**."})
         wait(60)
+        table.remove(interactedusers,inTable(interactedusers,userid))
         spamdata[userid] = {}
         updatePerms(userid,{"type","fuck-vowels","fuck-everything","message-counting","images","speak"},"on")
         send(userid,"Okay, those 60 seconds are up. Be more careful next time.",{["Title"]="Unmuted",["Color"]={0,255,0},["Text"]="You have been unmuted and are allowed to type again."})
-        do return end
+        return true
     end
+    return false
 end
 
 local function newWords() --Whitelist new words
@@ -492,8 +497,8 @@ local function admitNewUser() --Admit a new user to #exclusive-channel
     if storagedata["ExclusiveChannel"]["Serving"] then
         updatePerms(storagedata["ExclusiveChannel"]["Serving"],"exclusive-channel","clear")
         storagedata["ExclusiveChannel"]["Served"] = storagedata["ExclusiveChannel"]["Served"] + 1
-        if not inTable(storagedata["ExclusiveChannel"]["UniqueServed"],storagedata["ExclusiveChannel"]["Served"]) then
-            table.insert(storagedata["ExclusiveChannel"]["UniqueServed"],storagedata["ExclusiveChannel"]["Served"])
+        if not inTable(storagedata["ExclusiveChannel"]["UniqueServed"],storagedata["ExclusiveChannel"]["Serving"]) then
+            table.insert(storagedata["ExclusiveChannel"]["UniqueServed"],storagedata["ExclusiveChannel"]["Serving"])
         end
         storagedata["ExclusiveChannel"]["Serving"] = nil
     end
@@ -686,15 +691,9 @@ Client:on("ready", function()
     updateQueue()
     Client:on("reactionAdd",function(reaction,id)
         if not Client:getUser(id).bot and reaction.message == queuemessage then
-            if id == storagedata["ExclusiveChannel"]["Serving"] then
+            if id == storagedata["ExclusiveChannel"]["Serving"] or inTable(storagedata["ExclusiveChannel"]["Queue"],id) then
                 reaction:delete(id)
                 return
-            end
-            for i, userid in pairs(storagedata["ExclusiveChannel"]["Queue"]) do
-                if userid == id then
-                    reaction:delete(id)
-                    return
-                end
             end
             
             if not storagedata["ExclusiveChannel"]["Serving"] and #storagedata["ExclusiveChannel"]["Queue"] == 0 then
@@ -971,11 +970,8 @@ Client:on("ready", function()
     end)
     Client:on("voiceChannelLeave",function(member,channel)
         if channel == Channels["speak"] then
-            for i, speaker in pairs(speakers) do
-                if speaker == member then
-                    table.remove(speakers,i)
-                    break
-                end
+            if inTable(speakers,member) then
+                table.remove(speakers,inTable(speakers,member))
             end
             if #Channels["speak"].connectedMembers == 0 and status ~= "Talking" then
                 speakcontrols:clearReactions()
@@ -1051,14 +1047,14 @@ local function NewMessage(message)
         return
     end
     if spamdata[user.id] == "Muted" then
-        return
-    end
-    if spamdata[user.id] == "MuteProcess" then
         message:delete()
         return
     end
+    if channel == Channels["exclusive-channel"] then
+        return
+    end
     
-    spamSensor(user.id)
+    if spamSensor(user.id,message) and spamdata[user.id] ~= "Muted" then return end
     
     if storagedata["PlayerData"][user.id] == nil then
         storagedata["PlayerData"][user.id] = StartingData
@@ -1484,6 +1480,29 @@ local function NewMessage(message)
             return
         end
         
+        if arguments[1] == "apply" then
+            send(user.id,"__**Moderation Application**__\n\nWelcome to the application process for applying for moderator. Below you'll see the \"job description\" and the prompts that you will answer. All answers should be clearly numbered and in a singular message. You will be asked to confirm your response once you respond to this message. Qualifying applicants are subject to a follow-up interview. Type `cancel` to cancel this process.\n\n\n__Position Description__\nThis position doesn't have much to it at the moment. If you accept this position you should be willing to help out the server on a regular basis. Since the position has no clear definition, you will take part in defining it. Being willing to adapt and fulfill its duties is the number one priority.\n\n\n__Prompts__\n**[1.]**\nWhat timezone are you in?\n\n**[2.]**\nWhy would you like to become a moderator for the server?")
+            local response = getResponse(channel,600)
+            if response then
+                if response == "cancel" then
+                    send(user.id,"Your application submission has been cancelled. Please reuse the command if you'd like to submit a response.")
+                else
+                    send(user.id,"You are about to submit your application with the content above. Please type `submit` to submit your application.")
+                    local confirmation = getResponse(channel,300)
+                    if confirmation == "submit" then
+                        send(Channels["test"],"Application | <@"..user.id..">")
+                        send(Channels["test"],response)
+                        send(user.id,"Your application has been submitted.\n\nIf you have any concerns with your application or its contents please contact <@143172810221551616>.\nDo not submit another application.")
+                    else
+                        send(user.id,"You have not confirmed your submission. Please use the command again if you'd like to submit an application.")
+                    end
+                end
+            else
+                send(user.id,"You have forgotten to respond or are writing a very good application. Either way, please reuse the command and submit it once you are done.")
+            end
+            return
+        end
+        
         if arguments[1] == "github" then
             send(user.id,"Interested in the github? Here's the link:\nhttps://github.com/Sukadia/Bot_Nothing-In-Particular")
             return
@@ -1593,6 +1612,15 @@ local function NewMessage(message)
                     else
                         storagedata["LastSaved"] = {os.time(), true, true}
                     end
+                    for i, userid in pairs(interactedusers) do
+                        if storagedata["PlayerData"][userid]["State"] == "Command" then
+                            send(user.id,"The bot is restarting, so you'll have to reuse that command to answer.")
+                        end
+                        if spamdata[userid] == "Muted" then
+                            updatePerms(userid,{"type","fuck-vowels","fuck-everything","message-counting","images","speak"},"on")
+                            send(user.id,"The bot is restarting, so your mute has been waived for the time being.",{["Title"]="Unmuted",["Color"]={0,255,0},["Text"]="You have been unmuted and are allowed to type again."})
+                        end
+                    end
                     if not DevMode then
                         Storage:save(storagedata)
                     end
@@ -1601,11 +1629,16 @@ local function NewMessage(message)
             end
         --
         
-        if channel == Channels["important"] or channel == Channels["help"] or channel == Channels["test"] then
+        if channel == Channels["important"] or channel == Channels["help"] or channel == Channels["test"] or channel == Channels["updates"] then
             return
         end
         
-        --Delete messages containing special characters, morse code, or uses singular letters
+        --Delete messages containing special characters, morse code, stickers/embeds, or uses singular letters
+            if message.content == "" and channel ~= Channels["images"] then
+                message:delete()
+                send(user.id,"I can't disable stickers but I can delete them.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The message you tried to send contains a sticker. This is a bypass around implemented filters.\n\nYour message was deleted."})
+            end
+        
             local i = 0
             for letter in string.gmatch(text,".") do
                 i = i+1
