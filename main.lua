@@ -6,10 +6,12 @@
 --Fix deleted message counting towards the multi-message bypass (1 letter in #message-counting, then another to start chain)
 --Switch from table[""] to table."" because it looks nicer
 --Fix the bot sometimes crashing but not sending a crash message on reboot
+--Remove users from exclusive queue if they leave the server so time is accurate (currently waits until they're next to remove them)
 
 --  Voice channels
 --Make speak channel reaction more obvious that it opts you in
 --Fix broken pipe spam in output for music channel
+----Occurs when skipping or turning off a song
 --Fix first song sometimes being the last played song instead of the newly loaded one
 --Redesign embed, give song info on left side and queue on right side?
 --Make music channel controls be more obvious, perhaps an info button (maybe not necessary?)
@@ -206,7 +208,7 @@ local function edit(message,text,embedinfo) --Edit a sent message, same embedinf
         message:update(message)
     else
         embedinfo["Color"] = embedinfo["Color"] or {0,255,255}
-        message:update{content=text,embed={title=embedinfo["Title"],color=Discordia.Color.fromRGB(embedinfo["Color"][1],embedinfo["Color"][2],embedinfo["Color"][3]).value,description=embedinfo["Text"],image={url=embedinfo["ImageUrl"]},footer={icon_url=embedinfo["FooterImage"],text=embedinfo["FooterText"]}}}
+        message:update{content=text,embed={title=embedinfo["Title"],color=Discordia.Color.fromRGB(embedinfo["Color"][1],embedinfo["Color"][2],embedinfo["Color"][3]).value,description=embedinfo["Text"],image={url=embedinfo["ImageUrl"]},footer={icon_url=embedinfo["FooterImage"],text=embedinfo["FooterText"]},fields=((embedinfo["Inline1Name"] and embedinfo["Inline1Text"]) and {{name=embedinfo["Inline1Name"],value=embedinfo["Inline1Text"],inline=true},{name=embedinfo["Inline2Name"],value=embedinfo["Inline2Text"],inline=true}})}}
     end
 end
 
@@ -214,7 +216,7 @@ local function editembed(message,text,embedinfo) --Edit an embed, preserve all p
     if embedinfo["Color"] then
         embedinfo["Color"] = Discordia.Color.fromRGB(embedinfo["Color"][1],embedinfo["Color"][2],embedinfo["Color"][3]).value
     end
-    message:update{content=(text or message.content),embed={title=(embedinfo["Title"] or message.embed.title),color=(embedinfo["Color"] or message.embed.color),description=(embedinfo["Text"] or message.embed.description),image={url=(embedinfo["ImageUrl"] or (message.embed.image and message.embed.image.url))},footer={icon_url=(embedinfo["FooterImage"] or (message.embed.footer and message.embed.footer.icon_url)),text=(embedinfo["FooterText"] or message.embed.footer and message.embed.footer.text)}}}
+    message:update{content=(text or message.content),embed={title=(embedinfo["Title"] or message.embed.title),color=(embedinfo["Color"] or message.embed.color),description=(embedinfo["Text"] or message.embed.description),image={url=(embedinfo["ImageUrl"] or (message.embed.image and message.embed.image.url))},footer={icon_url=(embedinfo["FooterImage"] or (message.embed.footer and message.embed.footer.icon_url)),text=(embedinfo["FooterText"] or message.embed.footer and message.embed.footer.text)},fields=((embedinfo["Inline1Name"] or embedinfo["Inline1Text"] or embedinfo["Inline2Name"] or embedinfo["Inline2Text"] or message.embed.fields) and {{name=(embedinfo["Inline1Name"] or message.embed.fields[1].name),value=(embedinfo["Inline1Text"] or message.embed.fields[1].value),inline=true},{name=(embedinfo["Inline2Name"] or message.embed.fields[2].name),value=(embedinfo["Inline2Text"] or message.embed.fields[2].value),inline=true}})}}
 end
 
 local function getResponse(channel,timeout) --Wait (timeout) seconds for a response in (channel)
@@ -437,7 +439,7 @@ local function newWords() --Whitelist new words
                 if #newwhitelistedwords ~= totalsubmissions then -- Less than max whitelisted, but some words were the same
                     send(Channels["type"],"Huh, looks like there were some identical submissions.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were selected from "..totalsubmissions.." submissions."})
                 else
-                    send(Channels["type"],"Darn, missed the chance for "..(NewU-#newwhitelistedwords).." word"..((NewU-#newwhitelistedwords) == 1 and "" or "s").." being whitelisted.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were the only submissions."})
+                    send(Channels["type"],"Darn, missed the chance for "..(NewU-#newwhitelistedwords).." word"..((NewU-#newwhitelistedwords) == 1 and "" or "s").." to be whitelisted.",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were the only submissions."})
                 end
             else -- Max amount of words whitelisted
                 send(Channels["type"],"Here's the new words:",{["Title"]="New Words",["Color"]={0,255,255},["Text"]="New words have been added to the whitelist.\n\n"..newwordtext.."\n"..listItems(newwhitelistedwords,true).." were selected from "..totalsubmissions.." submissions."})
@@ -504,10 +506,14 @@ local function admitNewUser() --Admit a new user to #exclusive-channel
     end
     
     if #storagedata["ExclusiveChannel"]["Queue"] > 0 then
-        storagedata["ExclusiveChannel"]["Serving"] = storagedata["ExclusiveChannel"]["Queue"][1]
-        updatePerms(storagedata["ExclusiveChannel"]["Queue"][1],"exclusive-channel","images")
-        send(Channels["exclusive-channel"],"<@"..storagedata["ExclusiveChannel"]["Queue"][1]..">",{["Title"]="Exclusive Queue",["Text"]="<@"..storagedata["ExclusiveChannel"]["Queue"][1]..">, it is now your turn in the channel.\n\nYour "..QueueInterval.." hours start now."})
-        table.remove(storagedata["ExclusiveChannel"]["Queue"],1)
+        while storagedata["ExclusiveChannel"]["Serving"] == nil and #storagedata["ExclusiveChannel"]["Queue"] > 0 do
+            if Server:getMember(storagedata["ExclusiveChannel"]["Queue"][1]) then
+                storagedata["ExclusiveChannel"]["Serving"] = storagedata["ExclusiveChannel"]["Queue"][1]
+                updatePerms(storagedata["ExclusiveChannel"]["Queue"][1],"exclusive-channel","images")
+                send(Channels["exclusive-channel"],"<@"..storagedata["ExclusiveChannel"]["Queue"][1]..">",{["Title"]="Exclusive Queue",["Text"]="<@"..storagedata["ExclusiveChannel"]["Queue"][1]..">, it is now your turn in the channel.\n\nYour "..QueueInterval.." hours start now."})
+            end
+            table.remove(storagedata["ExclusiveChannel"]["Queue"],1)
+        end
     end
 end
 
@@ -864,14 +870,14 @@ Client:on("ready", function()
                             string = string.."**"..i..".** "..playlists[i][2].."\n\n"
                         end
                     end
-                    editembed(musiccontrols,nil,{["Color"]={150,0,150},["Text"]=string})
+                    edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={150,0,150},["Text"]=string,["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
                 end
                  
                 local function playSong(video) -- Plays a song, and downloads the next song if one is given
                     local process = io.popen("youtube-dl -f \"bestaudio[ext=m4a]\" --restrict-filenames -o \"/tmp/currentsong.m4a\" https://www.youtube.com/watch?v="..video["url"].." 2>&1") -- Save audio of YouTube video to /tmp/currentsong.m4a, this is because /tmp is usually a ramdisk and we want to minimize SD card writes
                     process:read("*a") -- Output is read just to make sure the command has completed before progressing
                     io.close(process)
-                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..songnum.." / "..#videoqueue.."`\n**["..video["title"].."](https://www.youtube.com/watch?v="..video["url"]..")**\n\n\nPress ".."1️⃣".." to quit"})
+                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..video["title"].."](https://www.youtube.com/watch?v="..video["url"]..")**\n\n\n\n\n".."1️⃣".." to quit"})
                     connection:playFFmpeg("/tmp/currentsong.m4a")
                     wait(0.1)
                     os.remove("/tmp/currentsong.m4a")
@@ -893,7 +899,7 @@ Client:on("ready", function()
                         songnum = 1
                         while songnum < #videoqueue and songnum ~= 0 do
                             local video = videoqueue[songnum]
-                            editembed(musiccontrols,nil,{["Color"]={255,0,255},["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..songnum.." / "..#videoqueue.."`\n**"..video["title"].."**\nLoading Song..\n\nPress ".."1️⃣".." to quit",})
+                            editembed(musiccontrols,nil,{["Color"]={255,0,255},["Text"]="Playlist:\n**"..playlists[playlistnum][2].."**",["Inline1Name"]="__Currently Playing__",["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**"..video["title"].."**\n\nLoading..\n\n\n".."1️⃣".." to quit",["Inline2Name"]="__In Queue__",["Inline2Text"]=(videoqueue[songnum+1] and (songnum+1)..". "..videoqueue[songnum+1]["title"] or "").."\n\n"..(videoqueue[songnum+2] and (songnum+2)..". "..videoqueue[songnum+2]["title"] or "").."\n\n"..(videoqueue[songnum+3] and (songnum+3)..". "..videoqueue[songnum+3]["title"] or "").."\n\n"..(videoqueue[songnum+4] and (songnum+4)..". "..videoqueue[songnum+4]["title"] or "")})
                             playSong(video)
                             songnum = songnum + 1
                         end
@@ -950,11 +956,11 @@ Client:on("ready", function()
                                 if page == "Playing" then
                                     connection:pauseStream()
                                     page = "Paused"
-                                    editembed(musiccontrols,nil,{["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\nPaused\n\nPress ".."1️⃣".." to quit"})
+                                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\n\nPaused\n\n\n".."1️⃣".." to quit"})
                                 else
                                     connection:resumeStream()
                                     page = "Playing"
-                                    editembed(musiccontrols,nil,{["Text"]="Playlist: **"..playlists[playlistnum][2].."**\n\n`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\n\n\nPress ".."1️⃣".." to quit"})
+                                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\n\n\n\n\n".."1️⃣".." to quit"})
                                 end
                             elseif reaction.emojiName == "⏩" then --Skip
                                 connection:stopStream()
