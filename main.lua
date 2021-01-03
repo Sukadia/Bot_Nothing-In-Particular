@@ -13,6 +13,7 @@
 --Fix broken pipe spam in output for music channel
 ----Occurs when skipping or turning off a song
 --Fix first song sometimes being the last played song instead of the newly loaded one
+--Fix last song in a playlist not being played
 --Redesign embed, give song info on left side and queue on right side?
 --Make music channel controls be more obvious, perhaps an info button (maybe not necessary?)
 --Do not load songs while player is paused so you can scrub through songs without a load delay
@@ -342,9 +343,6 @@ local function spamSensor(userid,message) --Log that a user has talked, mute if 
         spamdata[userid] = {os.time()}
         return
     end
-    if spamdata[userid] == "MuteProcess" then
-        return
-    end
     
     local temp = {}
     for i, time in pairs(spamdata[userid]) do
@@ -355,9 +353,9 @@ local function spamSensor(userid,message) --Log that a user has talked, mute if 
     spamdata[userid] = temp
     table.insert(spamdata[userid],os.time())
     if #spamdata[userid] > SpamM then
-        message:delete()
-        table.insert(interactedusers,userid)
         spamdata[userid] = "Muted"
+        table.insert(interactedusers,userid)
+        message:delete()
         updatePerms(userid,{"type","fuck-vowels","fuck-everything","message-counting","images","speak"},"off")
         send(userid,"Yikes, just got a complaint from the higher-ups:",{["Title"]="Muted for 60 seconds",["Color"]={255,0,0},["Text"]="You've sent more than "..SpamM.." messages in the past "..SpamS.." seconds.\n\nYou have exceeded the message limit. You are now muted for **60 seconds**."})
         wait(60)
@@ -732,7 +730,7 @@ Client:on("ready", function()
     end
     
         
-    local playlists = {{"https://www.youtube.com/playlist?list=PLIF2opf2-1PpNtDL54NYzTflxwrpi_yfz","\"Happy Pokémon Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PrQE8OMQWDM3JFsMNumrucL","\"Pokémon Jamming Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLkDIan7sXW2ilCdIvS22xX2FNAn_YuoDO","\"Best Future Funk\" by Sound Station"},{"https://www.youtube.com/playlist?list=PLOzDu-MXXLliO9fBNZOQTBDddoA3FzZUo","\"Lofi Hip Hop\" by the bootleg boy"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqVOqEkAQo2g4LBgluEqTHU","\"Orchestral Pokémon Song Remakes\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLxRnoC2v5tvg_xHK_roMyAStXDF-TRh2K","\"The Best of Retro Video Game Music\" by Specter227"}}
+    local playlists = {{"https://www.youtube.com/playlist?list=PLIF2opf2-1PpNtDL54NYzTflxwrpi_yfz","\"Happy Pokémon Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PrQE8OMQWDM3JFsMNumrucL","\"Pokémon Jamming Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLkDIan7sXW2ilCdIvS22xX2FNAn_YuoDO","\"Best Future Funk\" by Sound Station"},{"https://www.youtube.com/playlist?list=PLOzDu-MXXLliO9fBNZOQTBDddoA3FzZUo","\"Lofi Hip Hop\" by the bootleg boy"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqVOqEkAQo2g4LBgluEqTHU","\"Orchestral Pokémon Song Remakes\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLxRnoC2v5tvg_xHK_roMyAStXDF-TRh2K","\"The Best of Retro Video Game Music\" by Specter227"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqucHD3AbZkNSC0FUKTOLnl","\"OG Music Channel Playlist\" by Sukadia"}}
     local musiccontrols = Channels["voice-controls"]:getLastMessage()
     local connection = Channels["music"]:join()
     local controller, page, songnum, videoqueue, playlistnum
@@ -865,9 +863,9 @@ Client:on("ready", function()
                     page = pagenum
                     songnum = 0
                     local string = "`Page "..pagenum.." / "..math.ceil(#playlists/5).."`\n\n"
-                    for i=(pagenum*5)-4,pagenum*5 do
-                        if playlists[i] then
-                            string = string.."**"..i..".** "..playlists[i][2].."\n\n"
+                    for i=1,5 do
+                        if playlists[i+(pagenum*5)-5] then
+                            string = string.."**"..i..".** "..playlists[i+(pagenum*5)-5][2].."\n\n"
                         end
                     end
                     edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={150,0,150},["Text"]=string,["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
@@ -889,7 +887,6 @@ Client:on("ready", function()
                     coroutine.wrap(function()
                         editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Loading Playlist..\n_ _"})
                         local file = io.popen("youtube-dl -j -q --geo-bypass --restrict-filenames --playlist-random --flat-playlist \""..playlists[playlistnum][1].."\" 2>&1") --2>&1 brings output from stderr to stdout
-                        waiting = false
                         videoqueue = Json.decode("["..string.gsub(file:read("*a"),"\n",",").."]")
                         for i=#videoqueue, 1, -1 do --Remove deleted videos
                             if videoqueue[i]["title"] == "[Deleted video]" then
@@ -927,16 +924,16 @@ Client:on("ready", function()
                             return
                         end
                         if page ~= "Playing" and page ~= "Paused" then
-                            if reaction.emojiName == "1️⃣" and playlists[1*page] then
-                                playPlaylist(1*page)
-                            elseif reaction.emojiName == "2️⃣" and playlists[2*page] then
-                                playPlaylist(2*page)
-                            elseif reaction.emojiName == "3️⃣" and playlists[3*page] then
-                                playPlaylist(3*page)
-                            elseif reaction.emojiName == "4️⃣" and playlists[4*page] then
-                                playPlaylist(4*page)
-                            elseif reaction.emojiName == "5️⃣" and playlists[5*page] then
-                                playPlaylist(5*page)
+                            if reaction.emojiName == "1️⃣" and playlists[(page*5)-4] then
+                                playPlaylist((page*5)-4)
+                            elseif reaction.emojiName == "2️⃣" and playlists[(page*5)-3] then
+                                playPlaylist((page*5)-3)
+                            elseif reaction.emojiName == "3️⃣" and playlists[(page*5)-2] then
+                                playPlaylist((page*5)-2)
+                            elseif reaction.emojiName == "4️⃣" and playlists[(page*5)-1] then
+                                playPlaylist((page*5)-1)
+                            elseif reaction.emojiName == "5️⃣" and playlists[(page*5)] then
+                                playPlaylist((page*5))
                             elseif reaction.emojiName == "⏪" and page ~= 1 then
                                 playlistSearch(page - 1)
                             elseif reaction.emojiName == "⏩" and page ~= math.ceil(#playlists/5) then
@@ -1466,8 +1463,18 @@ local function NewMessage(message)
                     return a[2] < b[2]
                 end)
             end
-            local imagenum = math.random(1,#images)
-            send(user.id,"Here's some art I stole out of Sukadia's folder:",{["Color"]={75,100,100},["ImageUrl"]=images[imagenum][1],["FooterText"]="Image #"..imagenum.."/"..#images.." | Saved "..os.date("%x at %I:%M %p",images[imagenum][2])})
+            if arguments[2] ~= nil then
+                if tonumber(arguments[2]) ~= nil and images[tonumber(arguments[2])] then
+                    send(user.id,"Alright, here's #"..arguments[2]..":",{["Color"]={75,100,100},["ImageUrl"]=images[tonumber(arguments[2])][1],["FooterText"]="Image #"..arguments[2].."/"..#images.." | Saved "..os.date("%x at %I:%M %p",images[tonumber(arguments[2])][2])})
+                elseif arguments[2] == "last" or arguments[2] == "recent" then
+                    send(user.id,"Here is the most recent art saved:",{["Color"]={75,100,100},["ImageUrl"]=images[#images][1],["FooterText"]="Image #"..#images.."/"..#images.." | Saved "..os.date("%x at %I:%M %p",images[#images][2])})
+                else
+                    send(user.id,"That image doesn't exist. Please use a number between 1 and "..#images.." or `last` to get the most recent image.")
+                end
+            else
+                local imagenum = math.random(1,#images)
+                send(user.id,"Here's some art I stole out of Sukadia's folder:",{["Color"]={75,100,100},["ImageUrl"]=images[imagenum][1],["FooterText"]="Image #"..imagenum.."/"..#images.." | Saved "..os.date("%x at %I:%M %p",images[imagenum][2])})
+            end
             return
         end
         
@@ -1482,29 +1489,6 @@ local function NewMessage(message)
                 send(user.id,"You're already being served! You can enter the queue again after your "..QueueInterval.." hours expire in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time()).."**.")
             else
                 send(user.id,"You're not in the queue at the moment. You can enter the queue in <#784586300996321311>.")
-            end
-            return
-        end
-        
-        if arguments[1] == "apply" then
-            send(user.id,"__**Moderation Application**__\n\nWelcome to the application process for applying for moderator. Below you'll see the \"job description\" and the prompts that you will answer. All answers should be clearly numbered and in a singular message. You will be asked to confirm your response once you respond to this message. Qualifying applicants are subject to a follow-up interview. Type `cancel` to cancel this process.\n\n\n__Position Description__\nThis position doesn't have much to it at the moment. If you accept this position you should be willing to help out the server on a regular basis. Since the position has no clear definition, you will take part in defining it. Being willing to adapt and fulfill its duties is the number one priority.\n\n\n__Prompts__\n**[1.]**\nWhat timezone are you in?\n\n**[2.]**\nWhy would you like to become a moderator for the server?")
-            local response = getResponse(channel,600)
-            if response then
-                if response == "cancel" then
-                    send(user.id,"Your application submission has been cancelled. Please reuse the command if you'd like to submit a response.")
-                else
-                    send(user.id,"You are about to submit your application with the content above. Please type `submit` to submit your application.")
-                    local confirmation = getResponse(channel,300)
-                    if confirmation == "submit" then
-                        send(Channels["test"],"Application | <@"..user.id..">")
-                        send(Channels["test"],response)
-                        send(user.id,"Your application has been submitted.\n\nIf you have any concerns with your application or its contents please contact <@143172810221551616>.\nDo not submit another application.")
-                    else
-                        send(user.id,"You have not confirmed your submission. Please use the command again if you'd like to submit an application.")
-                    end
-                end
-            else
-                send(user.id,"You have forgotten to respond or are writing a very good application. Either way, please reuse the command and submit it once you are done.")
             end
             return
         end
