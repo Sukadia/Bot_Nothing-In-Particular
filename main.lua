@@ -1,27 +1,24 @@
---A boss battle channel where it's all the users in the server against the channel, perhaps win an ability at the end, win gear or moves?
---A channel where you can inflict something either on the person above or below
+--  Text Channels
+--Remove users from exclusive queue if they leave the server so time is accurate (currently waits until they're next to remove them)
 --Command for statistics like messages/day, deleted/accepted ratio, count highscore, ect.
 --Random event that allows you to react to 5 messages
---Use multiple suggest word abilities for a longer word (20 default, +5 each ability?)
---Fix deleted message counting towards the multi-message bypass (1 letter in #message-counting, then another to start chain)
---Switch from table[""] to table."" because it looks nicer
+--Use multiple suggest abilities for a longer word (20 default, +5 each ability?)
+--A boss battle channel where it's all the users in the server against the channel, perhaps win an ability at the end, win gear or moves?
+--A channel where you can inflict something either on the person above or below
+
 --Fix the bot sometimes crashing but not sending a crash message on reboot
---Remove users from exclusive queue if they leave the server so time is accurate (currently waits until they're next to remove them)
+--Fix deleted messages counting towards the multi-message bypass
 
---  Voice channels
---Make speak channel reaction more obvious that it opts you in
---Fix broken pipe spam in output for music channel
-----Occurs when skipping or turning off a song
---Fix first song sometimes being the last played song instead of the newly loaded one
---Fix last song in a playlist not being played
---Redesign embed, give song info on left side and queue on right side?
---Make music channel controls be more obvious, perhaps an info button (maybe not necessary?)
+--  Voice Channels
+--Implement way to play audio through direct link (May have to wait for Discordia 3.0)
 --Do not load songs while player is paused so you can scrub through songs without a load delay
---Expand playlist feature with a queue overview, loop playlist, perhaps save default settings per-user
---Implement way to play audio through direct link? (May have to wait for Discordia 3.0)
---Maybe don't download highest quality of youtube audio to reduce load time?
---The entire bot stalls during music loading
+--Make speak channel reaction more obvious that it opts you in
+--Make music channel controls be more obvious, perhaps an info button (maybe not necessary?)
 
+--Fix the entire bot stalling during song download
+--Fix bot "Voice connection not initialized before VOICE_SERVER_UPDATE", causing songs to download but not play
+--Fix "broken pipe" error appearing in output when skipping a song
+--Fix first song sometimes being the last played song instead of the newly loaded one (Unknown cause)
 
 
 -- Dependencies
@@ -700,6 +697,8 @@ Client:on("ready", function()
                 return
             end
             
+            table.insert(storagedata["ExclusiveChannel"]["Queue"],id)
+            reaction:delete(id)
             if not storagedata["ExclusiveChannel"]["Serving"] and #storagedata["ExclusiveChannel"]["Queue"] == 0 then
                 send(id,"Looks like you're the only person in line, no one even has access to the channel right now.",{["Title"]="Exclusive Channel",["Text"]="You have been put into the queue and are now **#1** in line. You will be admitted in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time()).."**.\n\nUse the `queue` command to check your place in line."})
             elseif #storagedata["ExclusiveChannel"]["Queue"] == 1 then
@@ -711,9 +710,7 @@ Client:on("ready", function()
             else
                 send(id,"Alright, you're in the queue now.",{["Title"]="Exclusive Channel",["Text"]="You have been put into the queue and are now **#"..(#storagedata["ExclusiveChannel"]["Queue"]).."** in line. You will be admitted in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time() + ((#storagedata["ExclusiveChannel"]["Queue"])*(QueueInterval*3600))).."**.\n\nUse the `queue` command to check your place in line."})
             end
-            table.insert(storagedata["ExclusiveChannel"]["Queue"],id)
             updateQueue()
-            reaction:delete(id)
         end
     end)
     queuemessage:addReaction("🔑")
