@@ -1,3 +1,5 @@
+--Create modules to organize code [DM commands, text channels, voice channels, global functions]
+
 --  Text Channels
 --Remove users from exclusive queue if they leave the server so time is accurate (currently waits until they're next to remove them)
 --Command for statistics like messages/day, deleted/accepted ratio, count highscore, ect.
@@ -10,10 +12,10 @@
 --Fix deleted messages counting towards the multi-message bypass
 
 --  Voice Channels
---Implement way to play audio through direct link (May have to wait for Discordia 3.0)
+--Add functionality to the "Use your own video/playlist" option
 --Do not load songs while player is paused so you can scrub through songs without a load delay
 --Make speak channel reaction more obvious that it opts you in
---Make music channel controls be more obvious, perhaps an info button (maybe not necessary?)
+--Implement way to play audio through direct link (May have to wait for Discordia 3.0)
 
 --Fix the entire bot stalling during song download
 --Fix bot "Voice connection not initialized before VOICE_SERVER_UPDATE", causing songs to download but not play
@@ -727,7 +729,7 @@ Client:on("ready", function()
     end
     
         
-    local playlists = {{"https://www.youtube.com/playlist?list=PLIF2opf2-1PpNtDL54NYzTflxwrpi_yfz","\"Happy Pokémon Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PrQE8OMQWDM3JFsMNumrucL","\"Pokémon Jamming Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLkDIan7sXW2ilCdIvS22xX2FNAn_YuoDO","\"Best Future Funk\" by Sound Station"},{"https://www.youtube.com/playlist?list=PLOzDu-MXXLliO9fBNZOQTBDddoA3FzZUo","\"Lofi Hip Hop\" by the bootleg boy"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqVOqEkAQo2g4LBgluEqTHU","\"Orchestral Pokémon Song Remakes\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLxRnoC2v5tvg_xHK_roMyAStXDF-TRh2K","\"The Best of Retro Video Game Music\" by Specter227"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqucHD3AbZkNSC0FUKTOLnl","\"OG Music Channel Playlist\" by Sukadia"}}
+    local playlists = {{"","Use your own playlist/video link"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PpNtDL54NYzTflxwrpi_yfz","\"Happy Pokémon Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PrQE8OMQWDM3JFsMNumrucL","\"Pokémon Jamming Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLkDIan7sXW2ilCdIvS22xX2FNAn_YuoDO","\"Best Future Funk\" by Sound Station"},{"https://www.youtube.com/playlist?list=PLOzDu-MXXLliO9fBNZOQTBDddoA3FzZUo","\"Lofi Hip Hop\" by the bootleg boy"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqVOqEkAQo2g4LBgluEqTHU","\"Orchestral Pokémon Song Remakes\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLxRnoC2v5tvg_xHK_roMyAStXDF-TRh2K","\"The Best of Retro Video Game Music\" by Specter227"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqucHD3AbZkNSC0FUKTOLnl","\"OG Music Channel Playlist\" by Sukadia"}}
     local musiccontrols = Channels["voice-controls"]:getLastMessage()
     local connection = Channels["music"]:join()
     local controller, page, songnum, videoqueue, playlistnum
@@ -872,7 +874,9 @@ Client:on("ready", function()
                     local process = io.popen("youtube-dl -f \"bestaudio[ext=m4a]\" --restrict-filenames -o \"/tmp/currentsong.m4a\" https://www.youtube.com/watch?v="..video["url"].." 2>&1") -- Save audio of YouTube video to /tmp/currentsong.m4a, this is because /tmp is usually a ramdisk and we want to minimize SD card writes
                     process:read("*a") -- Output is read just to make sure the command has completed before progressing
                     io.close(process)
-                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..video["title"].."](https://www.youtube.com/watch?v="..video["url"]..")**\n\n\n\n\n".."1️⃣".." to quit"})
+
+                    local timeduration = math.floor(video["duration"]/60)..":"..(math.floor(video["duration"]%60) < 10 and "0" or "")..math.floor(video["duration"]%60)
+                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..video["title"].."](https://www.youtube.com/watch?v="..video["url"]..")**\nDuration: "..timeduration.."\n\n\n\n".."1️⃣".." to quit"})
                     connection:playFFmpeg("/tmp/currentsong.m4a")
                     wait(0.1)
                     os.remove("/tmp/currentsong.m4a")
@@ -885,13 +889,13 @@ Client:on("ready", function()
                         editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Loading Playlist..\n_ _"})
                         local file = io.popen("youtube-dl -j -q --geo-bypass --restrict-filenames --playlist-random --flat-playlist \""..playlists[playlistnum][1].."\" 2>&1") --2>&1 brings output from stderr to stdout
                         videoqueue = Json.decode("["..string.gsub(file:read("*a"),"\n",",").."]")
-                        for i=#videoqueue, 1, -1 do --Remove deleted videos
-                            if videoqueue[i]["title"] == "[Deleted video]" then
+                        for i=#videoqueue, 1, -1 do --Remove deleted and long videos
+                            if videoqueue[i]["title"] == "[Deleted video]" or videoqueue[i]["duration"] > 600 then
                                 table.remove(videoqueue,i)
                             end
                         end
                         songnum = 1
-                        while songnum < #videoqueue and songnum ~= 0 do
+                        while songnum <= #videoqueue and songnum ~= 0 do
                             local video = videoqueue[songnum]
                             editembed(musiccontrols,nil,{["Color"]={255,0,255},["Text"]="Playlist:\n**"..playlists[playlistnum][2].."**",["Inline1Name"]="__Currently Playing__",["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**"..video["title"].."**\n\nLoading..\n\n\n".."1️⃣".." to quit",["Inline2Name"]="__In Queue__",["Inline2Text"]=(videoqueue[songnum+1] and (songnum+1)..". "..videoqueue[songnum+1]["title"] or "").."\n\n"..(videoqueue[songnum+2] and (songnum+2)..". "..videoqueue[songnum+2]["title"] or "").."\n\n"..(videoqueue[songnum+3] and (songnum+3)..". "..videoqueue[songnum+3]["title"] or "").."\n\n"..(videoqueue[songnum+4] and (songnum+4)..". "..videoqueue[songnum+4]["title"] or "")})
                             playSong(video)
@@ -922,7 +926,11 @@ Client:on("ready", function()
                         end
                         if page ~= "Playing" and page ~= "Paused" then
                             if reaction.emojiName == "1️⃣" and playlists[(page*5)-4] then
-                                playPlaylist((page*5)-4)
+                                if page == 1 then
+                                    --Allow submittal of playlist or video
+                                else
+                                    playPlaylist((page*5)-4)
+                                end
                             elseif reaction.emojiName == "2️⃣" and playlists[(page*5)-3] then
                                 playPlaylist((page*5)-3)
                             elseif reaction.emojiName == "3️⃣" and playlists[(page*5)-2] then
@@ -954,6 +962,7 @@ Client:on("ready", function()
                                 else
                                     connection:resumeStream()
                                     page = "Playing"
+                                    local timeduration = math.floor(videoqueue[songnum]["duration"]/60)..":"..(math.floor(videoqueue[songnum]["duration"]%60) < 10 and "0" or "")..math.floor(videoqueue[songnum]["duration"]%60)
                                     editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\n\n\n\n\n".."1️⃣".." to quit"})
                                 end
                             elseif reaction.emojiName == "⏩" then --Skip
