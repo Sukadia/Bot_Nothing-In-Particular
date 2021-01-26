@@ -9,17 +9,20 @@
 --A channel where you can inflict something either on the person above or below
 
 --Fix the bot sometimes crashing but not sending a crash message on reboot
---Fix deleted messages counting towards the multi-message bypass
 
 --  Voice Channels
---Add functionality to the "Use your own video/playlist" option
+--Completely remaking the voice channels and putting it into a module would work best, however doing so means needing to give the Client over, _G works but I've heard is bad practice?
+--Need to allow singular videos on the pause/play button video submittal
+--Need to fix all the bugs below before considering releasing it, also need ratelimiting so people don't spam reactions, especially for the channel permission changing ones
+
+--Implement way to play audio through direct link (May have to wait for Discordia 3.0)
 --Do not load songs while player is paused so you can scrub through songs without a load delay
 --Make speak channel reaction more obvious that it opts you in
---Implement way to play audio through direct link (May have to wait for Discordia 3.0)
+--Make music channel controls be more obvious, perhaps an info button (maybe not necessary?)
 
 --Fix the entire bot stalling during song download
 --Fix bot "Voice connection not initialized before VOICE_SERVER_UPDATE", causing songs to download but not play
---Fix "broken pipe" error appearing in output when skipping a song
+--Fix "broken pipe" error appearing in output when skipping a song ("Not possible" says someone when I asked)
 --Fix first song sometimes being the last played song instead of the newly loaded one (Unknown cause)
 
 
@@ -265,6 +268,8 @@ local function updatePerms(userid,channels,permtype) --Update a user/everyone's 
                 RolePerms:denyPermissions(Enum.permission.sendMessages)
                 return
             end
+        elseif permtype == "talk" then
+            PermObject = Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages)
         elseif permtype == "images" then
             PermObject = Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages,Enum.permission.attachFiles)
         elseif permtype == "noaccess" then
@@ -694,13 +699,12 @@ Client:on("ready", function()
     updateQueue()
     Client:on("reactionAdd",function(reaction,id)
         if not Client:getUser(id).bot and reaction.message == queuemessage then
+            reaction:delete(id)
             if id == storagedata["ExclusiveChannel"]["Serving"] or inTable(storagedata["ExclusiveChannel"]["Queue"],id) then
-                reaction:delete(id)
                 return
             end
             
             table.insert(storagedata["ExclusiveChannel"]["Queue"],id)
-            reaction:delete(id)
             if not storagedata["ExclusiveChannel"]["Serving"] and #storagedata["ExclusiveChannel"]["Queue"] == 0 then
                 send(id,"Looks like you're the only person in line, no one even has access to the channel right now.",{["Title"]="Exclusive Channel",["Text"]="You have been put into the queue and are now **#1** in line. You will be admitted in **"..convertSeconds(storagedata["ExclusiveChannel"]["AdmitTime"] - os.time()).."**.\n\nUse the `queue` command to check your place in line."})
             elseif #storagedata["ExclusiveChannel"]["Queue"] == 1 then
@@ -729,16 +733,17 @@ Client:on("ready", function()
     end
     
         
-    local playlists = {{"","Use your own playlist/video link"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PpNtDL54NYzTflxwrpi_yfz","\"Happy Pokémon Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PrQE8OMQWDM3JFsMNumrucL","\"Pokémon Jamming Music\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLkDIan7sXW2ilCdIvS22xX2FNAn_YuoDO","\"Best Future Funk\" by Sound Station"},{"https://www.youtube.com/playlist?list=PLOzDu-MXXLliO9fBNZOQTBDddoA3FzZUo","\"Lofi Hip Hop\" by the bootleg boy"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqVOqEkAQo2g4LBgluEqTHU","\"Orchestral Pokémon Song Remakes\" by Sukadia"},{"https://www.youtube.com/playlist?list=PLxRnoC2v5tvg_xHK_roMyAStXDF-TRh2K","\"The Best of Retro Video Game Music\" by Specter227"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqucHD3AbZkNSC0FUKTOLnl","\"OG Music Channel Playlist\" by Sukadia"}}
+    local playlists = {{"https://www.youtube.com/playlist?list=PLIF2opf2-1PpNtDL54NYzTflxwrpi_yfz","Happy Pokémon Music","Sukadia"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PrQE8OMQWDM3JFsMNumrucL","Pokémon Jamming Music","Sukadia"},{"https://www.youtube.com/playlist?list=PLkDIan7sXW2ilCdIvS22xX2FNAn_YuoDO","Best Future Funk","Sound Station"},{"https://www.youtube.com/playlist?list=PLOzDu-MXXLliO9fBNZOQTBDddoA3FzZUo","Lofi Hip Hop","the bootleg boy"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqVOqEkAQo2g4LBgluEqTHU","Orchestral Pokémon Song Remakes","Sukadia"},{"https://www.youtube.com/playlist?list=PLxRnoC2v5tvg_xHK_roMyAStXDF-TRh2K","The Best of Retro Video Game Music","Specter227"},{"https://www.youtube.com/playlist?list=PLIF2opf2-1PqucHD3AbZkNSC0FUKTOLnl","OG Music Channel Playlist","Sukadia"}}
     local musiccontrols = Channels["voice-controls"]:getLastMessage()
     local connection = Channels["music"]:join()
-    local controller, page, songnum, videoqueue, playlistnum
+    local controller, page, songnum, videoqueue, songsubmittal
     if musiccontrols and musiccontrols ~= speakcontrols then
         musiccontrols:clearReactions()
         edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={100,0,100},["Text"]="The music channel is currently inactive.\n\nJoin to activate its functionality."})
     else
         musiccontrols = send(Channels["voice-controls"],"",{["Title"]="Music Channel",["Color"]={100,0,100},["Text"]="The music channel is currently inactive.\n\nJoin to activate its functionality."})
     end
+    updatePerms("everyone","voice-controls","read")
     
     Client:on("voiceChannelJoin",function(member,channel)
         if channel == Channels["speak"] then
@@ -861,13 +866,14 @@ Client:on("ready", function()
                 local function playlistSearch(pagenum)
                     page = pagenum
                     songnum = 0
-                    local string = "`Page "..pagenum.." / "..math.ceil(#playlists/5).."`\n\n"
-                    for i=1,5 do
-                        if playlists[i+(pagenum*5)-5] then
-                            string = string.."**"..i..".** "..playlists[i+(pagenum*5)-5][2].."\n\n"
+                    local numberemojis = {"1️⃣","2️⃣","3️⃣","4️⃣"}
+                    local string = ""
+                    for i=1,4 do
+                        if playlists[i+(pagenum*4)-4] then
+                            string = string..numberemojis[i].." **"..playlists[i+(pagenum*4)-4][2].."**\nby "..playlists[i+(pagenum*4)-4][3].."\n\n"
                         end
                     end
-                    edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={150,0,150},["Text"]=string,["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
+                    edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={150,0,150},["Text"]=string.."⏯️ Use your own playlist/video",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
                 end
                  
                 local function playSong(video) -- Plays a song, and downloads the next song if one is given
@@ -876,28 +882,74 @@ Client:on("ready", function()
                     io.close(process)
 
                     local timeduration = math.floor(video["duration"]/60)..":"..(math.floor(video["duration"]%60) < 10 and "0" or "")..math.floor(video["duration"]%60)
-                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..video["title"].."](https://www.youtube.com/watch?v="..video["url"]..")**\nDuration: "..timeduration.."\n\n\n\n".."1️⃣".." to quit"})
+                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..video["title"].."](https://www.youtube.com/watch?v="..video["url"]..")**\nDuration: "..timeduration.."\n\n\n\n1️⃣ to quit"})
                     connection:playFFmpeg("/tmp/currentsong.m4a")
                     wait(0.1)
                     os.remove("/tmp/currentsong.m4a")
                 end
-                
-                local function playPlaylist(num)
-                    playlistnum = num
+
+                local function startQueue(url)
                     page = "Playing"
                     coroutine.wrap(function()
-                        editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Loading Playlist..\n_ _"})
-                        local file = io.popen("youtube-dl -j -q --geo-bypass --restrict-filenames --playlist-random --flat-playlist \""..playlists[playlistnum][1].."\" 2>&1") --2>&1 brings output from stderr to stdout
-                        videoqueue = Json.decode("["..string.gsub(file:read("*a"),"\n",",").."]")
-                        for i=#videoqueue, 1, -1 do --Remove deleted and long videos
-                            if videoqueue[i]["title"] == "[Deleted video]" or videoqueue[i]["duration"] > 600 then
-                                table.remove(videoqueue,i)
+                        local file
+                        local isplaylist = string.find(url,"playlist")
+                        if isplaylist then
+                            editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Loading Playlist..\n_ _"})
+                            file = io.popen("youtube-dl -j -q --geo-bypass --restrict-filenames --playlist-random --flat-playlist \""..url.."\" 2>&1") --2>&1 brings output from stderr to stdout
+                        else
+                            editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Loading Video..\n_ _"})
+                            file = io.popen("youtube-dl -j -q --get-url --get-title --get-duration \""..url.."\" 2>&1") --2>&1 brings output from stderr to stdout
+                        end
+                        local success = pcall(function()
+                            if isplaylist then
+                                videoqueue = Json.decode("["..string.gsub(file:read("*a"),"\n",",").."]")
+                            else
+                                videoqueue = {Json.decode("["..string.gsub(file:read("*a"),"\n",",").."]")}
+                            end
+                        end)
+                        local deletedreason
+                        if success then
+                            for i=#videoqueue, 1, -1 do --Remove deleted and long videos
+                                if videoqueue[i]["title"] == "[Deleted video]" then
+                                    deletedreason = "Deleted"
+                                    table.remove(videoqueue,i)
+                                elseif videoqueue[i]["duration"] > 600 then
+                                    deletedreason = "TooLong"
+                                    table.remove(videoqueue,i)
+                                end
+                            end
+                        else
+                            if isplaylist then
+                                editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Error loading playlist | Invalid Link"})
+                            else
+                                editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Error loading video | Invalid Link"})
+                            end
+                            wait(3)
+                            playlistSearch(1)
+                            return
+                        end
+                        if #videoqueue == 0 then
+                            if isplaylist then
+                                editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Error loading playlist | All videos were deleted or over 10 minutes long"})
+                            elseif not isplaylist and deletedreason == "Deleted" then
+                                editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Error loading video | Video was deleted"})
+                            elseif not isplaylist and deletedreason == "TooLong" then
+                                editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Error loading video | Video was over 10 minutes long"})
+                            end
+                            wait(3)
+                            playlistSearch(1)
+                            return
+                        end
+                        local playlistnum = 0
+                        for i, playlist in pairs(playlists) do
+                            if playlist[1] == url then
+                                playlistnum = i
                             end
                         end
                         songnum = 1
                         while songnum <= #videoqueue and songnum ~= 0 do
                             local video = videoqueue[songnum]
-                            editembed(musiccontrols,nil,{["Color"]={255,0,255},["Text"]="Playlist:\n**"..playlists[playlistnum][2].."**",["Inline1Name"]="__Currently Playing__",["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**"..video["title"].."**\n\nLoading..\n\n\n".."1️⃣".." to quit",["Inline2Name"]="__In Queue__",["Inline2Text"]=(videoqueue[songnum+1] and (songnum+1)..". "..videoqueue[songnum+1]["title"] or "").."\n\n"..(videoqueue[songnum+2] and (songnum+2)..". "..videoqueue[songnum+2]["title"] or "").."\n\n"..(videoqueue[songnum+3] and (songnum+3)..". "..videoqueue[songnum+3]["title"] or "").."\n\n"..(videoqueue[songnum+4] and (songnum+4)..". "..videoqueue[songnum+4]["title"] or "")})
+                            editembed(musiccontrols,nil,{["Color"]={255,0,255},["Text"]="Playlist:\n**"..(playlistnum == 0 and "Personal Link" or playlists[playlistnum][2]).."**",["Inline1Name"]="__Currently Playing__",["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**"..video["title"].."**\n\nLoading..\n\n\n1️⃣ to quit",["Inline2Name"]="__In Queue__",["Inline2Text"]=(videoqueue[songnum+1] and (songnum+1)..". "..videoqueue[songnum+1]["title"] or "").."\n\n"..(videoqueue[songnum+2] and (songnum+2)..". "..videoqueue[songnum+2]["title"] or "").."\n\n"..(videoqueue[songnum+3] and (songnum+3)..". "..videoqueue[songnum+3]["title"] or "").."\n\n"..(videoqueue[songnum+4] and (songnum+4)..". "..videoqueue[songnum+4]["title"] or "")})
                             playSong(video)
                             songnum = songnum + 1
                         end
@@ -909,7 +961,7 @@ Client:on("ready", function()
                 
                 controller = member
                 edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={150,0,150},["Text"]="Waiting for buttons..",["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
-                local reactionemojis = {"1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","⏪","⏯️","⏩"}
+                local reactionemojis = {"1️⃣","2️⃣","3️⃣","4️⃣","⏪","⏯️","⏩"}
                 for i, reaction in pairs(reactionemojis) do
                     if #Channels["music"].connectedMembers ~= 1 then
                         musiccontrols:addReaction(reaction)
@@ -919,30 +971,137 @@ Client:on("ready", function()
                 end
                 playlistSearch(1)
                 local function musicReaction(reaction,id)
-                    if not Client:getUser(id).bot and reaction.message == musiccontrols then
+                    local user = Client:getUser(id)
+                    if not user.bot and reaction.message == musiccontrols then
                         if controller.user.id ~= id then
                             reaction:delete(id)
                             return
                         end
-                        if page ~= "Playing" and page ~= "Paused" then
-                            if reaction.emojiName == "1️⃣" and playlists[(page*5)-4] then
-                                if page == 1 then
-                                    --Allow submittal of playlist or video
+                        if page ~= "Playing" and page ~= "Paused" and page ~= "WaitingLink" then
+                            if reaction.emojiName == "1️⃣" and (page ~= math.ceil(#playlists/4)+1 or page ~= playlists[(page*4)-3]) then
+                                if page < math.ceil(#playlists/4)+1 then
+                                    startQueue(playlists[(page*4)-3][1])
+                                elseif not songsubmittal then
+                                    songsubmittal = true
+                                    editembed(musiccontrols,"",{["Text"]="1️⃣ **Song Submittal**\nAny users in the voice channel can send a link to add to the queue.\n\n"..(songsubmittal and "✅ Enabled" or "❌ Disabled").."\n\n2️⃣\n\n\n\n\n\n_ _"})
+                                    updatePerms("everyone","voice-controls","talk")
+                                    local function newLinkSubmittal(message)
+                                        if message.channel == Channels["voice-controls"] and not message.author.bot then
+                                            local response = message.content
+                                            local user = message.author
+                                            message:delete()
+                                            coroutine.wrap(function()
+                                            local _, stringend = string.find(response,"youtube%.com/playlist%?list=")
+                                            local _, stringend2 = string.find(response,"youtube%.com/watch%?v=")
+                                            if stringend then
+                                                local videourl = "https://www.youtube.com/playlist?list="..string.sub(response,stringend+1,-1)
+                                                if page == "Playing" or page == "Paused" then
+                                                    local file = io.popen("youtube-dl -j -q --geo-bypass --restrict-filenames --playlist-random --flat-playlist \""..videourl.."\" 2>&1") --2>&1 brings output from stderr to stdout
+                                                    local success = pcall(function()
+                                                        local videos = Json.decode("["..string.gsub(file:read("*a"),"\n",",").."]")
+                                                        for i, video in pairs(videos) do
+                                                            table.insert(videoqueue,video)
+                                                        end
+                                                    end)
+                                                    if success then
+                                                        send(user.id,"Alright, I got your playlist into the song queue.")
+                                                    else
+                                                        send(user.id,"That link was invalid, you'll have to send another one.")
+                                                        return
+                                                    end
+                                                else
+                                                    startQueue(videourl)
+                                                    return
+                                                end
+                                            elseif stringend2 then
+                                                local videourl = "https://www.youtube.com/watch?v="..string.sub(response,stringend+1,-1)
+                                                if page == "Playing" or page == "Paused" then
+                                                    local file = io.popen("youtube-dl -j -q --get-url --get-title --get-duration \""..url.."\" 2>&1")
+                                                    local success = pcall(function()
+                                                        local video = Json.decode("["..string.gsub(file:read("*a"),"\n",",").."]")
+                                                        table.insert(videoqueue,video)
+                                                    end)
+                                                    if success then
+                                                        send(user.id,"Alright, I got your video into the song queue.")
+                                                    else
+                                                        send(user.id,"That link was invalid, you'll have to send another one.")
+                                                        return
+                                                    end
+                                                else
+                                                    startQueue(videourl)
+                                                    return
+                                                end
+                                            else
+                                                send(user.id,"That isn't a youtube link. You need to send a youtube link in order for me to add something to the queue.")
+                                                return
+                                            end
+                                            if page == "Paused" then
+                                                editembed(musiccontrols,nil,{["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\n\nPaused\n\n\n1️⃣ to quit",["Inline2Text"]=(videoqueue[songnum+1] and (songnum+1)..". "..videoqueue[songnum+1]["title"] or "").."\n\n"..(videoqueue[songnum+2] and (songnum+2)..". "..videoqueue[songnum+2]["title"] or "").."\n\n"..(videoqueue[songnum+3] and (songnum+3)..". "..videoqueue[songnum+3]["title"] or "").."\n\n"..(videoqueue[songnum+4] and (songnum+4)..". "..videoqueue[songnum+4]["title"] or "")})
+                                            else
+                                                local timeduration = math.floor(videoqueue[songnum]["duration"]/60)..":"..(math.floor(videoqueue[songnum]["duration"]%60) < 10 and "0" or "")..math.floor(videoqueue[songnum]["duration"]%60)
+                                                editembed(musiccontrols,nil,{["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\nDuration: "..timeduration.."\n\n\n\n1️⃣ to quit",["Inline2Text"]=(videoqueue[songnum+1] and (songnum+1)..". "..videoqueue[songnum+1]["title"] or "").."\n\n"..(videoqueue[songnum+2] and (songnum+2)..". "..videoqueue[songnum+2]["title"] or "").."\n\n"..(videoqueue[songnum+3] and (songnum+3)..". "..videoqueue[songnum+3]["title"] or "").."\n\n"..(videoqueue[songnum+4] and (songnum+4)..". "..videoqueue[songnum+4]["title"] or "")})
+                                            end
+                                        end)()
+                                        end
+                                    end
+                                    Client:on("messageCreate",newLinkSubmittal)
                                 else
-                                    playPlaylist((page*5)-4)
+                                    songsubmittal = false
+                                    editembed(musiccontrols,"",{["Text"]="1️⃣ **Song Submittal**\nAny users in the voice channel can send a link to add to the queue.\n\n"..(songsubmittal and "✅ Enabled" or "❌ Disabled").."\n\n2️⃣\n\n\n\n\n\n_ _"})
+                                    updatePerms("everyone","voice-controls","read")
                                 end
-                            elseif reaction.emojiName == "2️⃣" and playlists[(page*5)-3] then
-                                playPlaylist((page*5)-3)
-                            elseif reaction.emojiName == "3️⃣" and playlists[(page*5)-2] then
-                                playPlaylist((page*5)-2)
-                            elseif reaction.emojiName == "4️⃣" and playlists[(page*5)-1] then
-                                playPlaylist((page*5)-1)
-                            elseif reaction.emojiName == "5️⃣" and playlists[(page*5)] then
-                                playPlaylist((page*5))
+                            elseif reaction.emojiName == "2️⃣" and playlists[(page*4)-2] then
+                                startQueue(playlists[(page*4)-2][1])
+                            elseif reaction.emojiName == "3️⃣" and playlists[(page*4)-1] then
+                                startQueue(playlists[(page*4)-1][1])
+                            elseif reaction.emojiName == "4️⃣" and playlists[(page*4)] then
+                                startQueue(playlists[(page*4)][1])
                             elseif reaction.emojiName == "⏪" and page ~= 1 then
-                                playlistSearch(page - 1)
-                            elseif reaction.emojiName == "⏩" and page ~= math.ceil(#playlists/5) then
-                                playlistSearch(page + 1)
+                                page = page - 1
+                                playlistSearch(page)
+                            elseif reaction.emojiName == "⏯️" and page ~= math.ceil(#playlists/4)+1 then
+                                page = "WaitingLink"
+                                reaction:delete(id)
+                                editembed(musiccontrols,nil,{["Text"]="Please send your playlist link in the channel.\n\n1️⃣ to cancel"})
+                                updatePerms(user.id,"voice-controls","talk")
+                                local function waitForResponse(message)
+                                    if message.channel == Channels["voice-controls"] and not message.author.bot then
+                                        local response = message.content
+                                        message:delete()
+                                        if controller.user.id == id then
+                                            Client:removeListener("reactionAdd",speakReaction)
+                                            Client:removeListener("messageCreate",waitForResponse)
+                                            updatePerms(user.id,"voice-controls","clear")
+                                            local _, stringend = string.find(response,"youtube%.com/playlist%?list=")
+                                            if stringend then
+                                                local videourl = "https://www.youtube.com/playlist?list="..string.sub(response,stringend+1,-1)
+                                                startQueue(videourl)
+                                            else
+                                                editembed(musiccontrols,nil,{["Color"]={200,0,200},["Text"]="Error loading playlist, invalid link."})
+                                                wait(3)
+                                                playlistSearch(1)
+                                            end
+                                        end
+                                    end
+                                end
+                                local function checkCancelReaction(reaction,id)
+                                    if reaction.emojiName == "1️⃣" and controller.user.id == id and reaction.message == musiccontrols then
+                                        Client:removeListener("reactionAdd",speakReaction)
+                                        Client:removeListener("messageCreate",waitForResponse)
+                                        updatePerms(user.id,"voice-controls","clear")
+                                        playlistSearch(1)
+                                    end
+                                end
+                                Client:on("reactionAdd",checkCancelReaction)
+                                Client:on("messageCreate",waitForResponse)
+                                return
+                            elseif reaction.emojiName == "⏩" and page ~= math.ceil(#playlists/4)+2 then
+                                page = page + 1
+                                if page < math.ceil(#playlists/4)+1 then
+                                    playlistSearch(page)
+                                else
+                                    editembed(musiccontrols,"",{["Text"]="1️⃣ **Song Submittal**\nAny users in the voice channel can send a link to add to the queue.\n\n"..(songsubmittal and "✅ Enabled" or "❌ Disabled").."\n\n2️⃣\n\n\n\n\n\n_ _"})
+                                end
                             end
                         end
                         if page == "Playing" or page == "Paused" then
@@ -958,12 +1117,13 @@ Client:on("ready", function()
                                 if page == "Playing" then
                                     connection:pauseStream()
                                     page = "Paused"
-                                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\n\nPaused\n\n\n".."1️⃣".." to quit"})
+                                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\n\nPaused\n\n\n1️⃣ to quit"})
                                 else
                                     connection:resumeStream()
                                     page = "Playing"
                                     local timeduration = math.floor(videoqueue[songnum]["duration"]/60)..":"..(math.floor(videoqueue[songnum]["duration"]%60) < 10 and "0" or "")..math.floor(videoqueue[songnum]["duration"]%60)
-                                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\n\n\n\n\n".."1️⃣".." to quit"})
+                                    editembed(musiccontrols,nil,{["Color"]={255,0,255},["Inline1Text"]="`Song "..songnum.." / "..#videoqueue.."`\n**["..videoqueue[songnum]["title"].."](https://www.youtube.com/watch?v="..videoqueue[songnum]["url"]..")**\nDuration: "..timeduration.."\n\n\n\n1️⃣ to quit"})
+                                    
                                 end
                             elseif reaction.emojiName == "⏩" then --Skip
                                 connection:stopStream()
@@ -1008,11 +1168,13 @@ Client:on("ready", function()
                 end
                 musiccontrols:clearReactions()
                 edit(musiccontrols,"",{["Title"]="Music Channel",["Color"]={100,0,100},["Text"]="The music channel is currently inactive.\n\nJoin to activate its functionality."})
+                updatePerms("everyone","voice-controls","read")
             elseif member == controller then
                 for i, member in pairs(Channels["music"].connectedMembers) do
                     if not member.user.bot then
                         controller = member
                         editembed(musiccontrols,nil,{["FooterImage"]=controller.user.avatarURL,["FooterText"]=controller.name.." is the controller."})
+                        updatePerms(member.user.id,"voice-controls","clear")
                         return
                     end
                 end
@@ -1508,6 +1670,11 @@ local function NewMessage(message)
             send(user.id,"shut the fuck up")
             return
         end
+
+        if text == "sukadia is a furry" then
+            send(user.id,"says you <a:pikajoy:775490975203721256>")
+            return
+        end
         
         if storagedata["PlayerData"][user.id]["State"] == "Normal" then
             channel:send{file = "pikachustare.png"}
@@ -1654,32 +1821,34 @@ local function NewMessage(message)
                 end
             end
             
-            local nonemojimessage = text
-            for i, emoji in pairs(Server.emojis) do
-                nonemojimessage = string.gsub(nonemojimessage,"<:"..emoji.hash..">","")
-                nonemojimessage = string.gsub(nonemojimessage,"<a:"..emoji.hash..">","")
-            end
-            local nonemojiwords = split(string.gsub(string.gsub(nonemojimessage,"%p",""),"%c"," "))
-            for i, word in pairs(nonemojiwords) do
-                if string.len(word) == 1 then
-                    if nonemojiwords[i+1] ~= nil and nonemojiwords[i+2] ~= nil then
-                        if string.len(nonemojiwords[i+1]) == 1 and string.len(nonemojiwords[i+2]) == 1 then
-                            message:delete()
-                            send(user.id,"Sorry, can't have you bypassing like that.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The message you tried to send uses singular letters to spell out words. This is a bypass around implemented filters.\n\nYour message was deleted."})
-                            return
+            if channel == Channels["type"] then
+                local nonemojimessage = text
+                for i, emoji in pairs(Server.emojis) do
+                    nonemojimessage = string.gsub(nonemojimessage,"<:"..emoji.hash..">","")
+                    nonemojimessage = string.gsub(nonemojimessage,"<a:"..emoji.hash..">","")
+                end
+                local nonemojiwords = split(string.gsub(string.gsub(nonemojimessage,"%p",""),"%c"," "))
+                for i, word in pairs(nonemojiwords) do
+                    if string.len(word) == 1 then
+                        if nonemojiwords[i+1] ~= nil and nonemojiwords[i+2] ~= nil then
+                            if string.len(nonemojiwords[i+1]) == 1 and string.len(nonemojiwords[i+2]) == 1 then
+                                message:delete()
+                                send(user.id,"Sorry, can't have you bypassing like that.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The message you tried to send uses singular letters to spell out words. This is a bypass around implemented filters.\n\nYour message was deleted."})
+                                return
+                            end
                         end
                     end
                 end
-            end
-            
-            if lastmessage[user.id] ~= nil then
-                if #split(lastmessage[user.id]) == string.len(string.gsub(lastmessage[user.id],"%W","")) and #arguments == string.len(string.gsub(text,"%W","")) and string.len(lastmessage[user.id]) ~= 0 and string.len(text) ~= 0 then
-                    message:delete()
-                    send(user.id,"We serve *words* here sir.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The message you tried to send uses multiple messages to spell out a word. This is a bypass around implemented filters.\n\nYour message was deleted."})
-                    return
+                
+                if lastmessage[user.id] ~= nil then
+                    if #split(lastmessage[user.id]) == string.len(string.gsub(lastmessage[user.id],"%W","")) and #arguments == string.len(string.gsub(text,"%W","")) and string.len(lastmessage[user.id]) ~= 0 and string.len(text) ~= 0 then
+                        message:delete()
+                        send(user.id,"We serve *words* here sir.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The message you tried to send uses multiple messages to spell out a word. This is a bypass around implemented filters.\n\nYour message was deleted."})
+                        return
+                    end
                 end
+                lastmessage[user.id] = text
             end
-            lastmessage[user.id] = text
         --
         
         
