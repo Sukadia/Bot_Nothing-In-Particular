@@ -9,12 +9,9 @@
 --A channel where you can inflict something either on the person above or below
 
 --Fix the bot sometimes crashing but not sending a crash message on reboot
+--Fix deleted messages counting towards the multi-message bypass
 
 --  Voice Channels
---Completely remaking the voice channels and putting it into a module would work best, however doing so means needing to give the Client over, _G works but I've heard is bad practice?
---Need to allow singular videos on the pause/play button video submittal
---Need to fix all the bugs below before considering releasing it, also need ratelimiting so people don't spam reactions, especially for the channel permission changing ones
-
 --Implement way to play audio through direct link (May have to wait for Discordia 3.0)
 --Do not load songs while player is paused so you can scrub through songs without a load delay
 --Make speak channel reaction more obvious that it opts you in
@@ -50,6 +47,7 @@ local SpamM, SpamS = 3, 5 --Messages/Second for Spam filter
 local NewW, NewU = 3, 2 --New Random / User Suggested Words
 local CountUpdate = 2 --Minutes between count message updating
 local QueueInterval = 8 --Hours between admitting new user to #exclusive-channel
+local ResizeMax, ResizeBias = 1000, 5
 local ChannelPerms = {["type"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
     ["fuck-vowels"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
     ["fuck-everything"]=Permissions.fromMany(Enum.permission.readMessageHistory,Enum.permission.readMessages,Enum.permission.sendMessages),
@@ -72,7 +70,8 @@ if storagedata == nil then -- If no data was loaded, populate storagedata with d
         ["WordCount"]={},        --{ {word, #ofuses}, ...}
         ["LastSaved"]={},        --{ timesaved, closedproperly?, silentrestart? }
         ["CheckUsers"]={},       --{ "userid", ... }
-        ["ExclusiveChannel"]={}  --{ ["AdmitTime"] = timeadmitted, ["Serving"] = userid, ["Queue"] = {"userid", ... }, ["Served"] = served, ["UniqueServed"] = {userid, ...} }
+        ["ExclusiveChannel"]={}, --{ ["AdmitTime"] = timeadmitted, ["Serving"] = userid, ["Queue"] = {"userid", ... }, ["Served"] = served, ["UniqueServed"] = {userid, ...} }
+        ["ResizeChannel"]={}     --{ width, height }
     }
 end
 local spamdata = {}                          --{ ["UserId"]={messagetime, ... }, ... }  --Spam Detection
@@ -141,7 +140,7 @@ local function convertSeconds(seconds,desired) --Turns seconds into a readable s
             time, unit = round(seconds/60), "minute"
         elseif seconds <= 86400 then
             if round((seconds - math.floor(seconds/3600)*3600)/60) == 0 then
-                return math.floor(seconds/3600).." hour"..(math.floor(seconds/3600) == 1 and "" or "s").." "..round((seconds - math.floor(seconds/3600))/60).." minute"..(round((seconds - math.floor(seconds/3600))/60) == 1 and "" or "s")
+                return math.floor(seconds/3600).." hour"..(math.floor(seconds/3600) == 1 and "" or "s").." "..round((seconds - math.floor(seconds/3600)*3600)/60).." minute"..(round((seconds - math.floor(seconds/3600)*3600)/60) == 1 and "" or "s")
             else
                 return round(seconds/3600).." hour"..(round(seconds/3600) == 1 and "" or "s")
             end
@@ -377,9 +376,9 @@ local function newWords() --Whitelist new words
     local newwordtext = ""
     local newrandomwords = {}
     while wordsneeded ~= 0 do
-        local result, body, randomwords
+        local randomwords
         local success, err = pcall(function()
-            local result, body = Coro.request("GET","https://random-word-api.herokuapp.com/word?number=100")
+            local _, body = Coro.request("GET","https://random-word-api.herokuapp.com/word?number=100")
             randomwords = Json.decode(body)
         end)
         if success then
@@ -639,14 +638,15 @@ coroutine.wrap(function() --Count update message loop
                             deletenotice = "\n\n**Notice:** The last counter deleted their message. Use the `count` command to verify your message length."
                         end
                     end
-                    storagedata["CountChannel"]["CountMessage"] = send(Channels["message-counting"],"The next message should be **"..storagedata["CountChannel"]["Count"].."** characters long.\n\nProgress to 2000:\n"..progressbar.." "..round((storagedata["CountChannel"]["Count"]-1)/20,2).."%"..deletenotice).id
+                    local message = send(Channels["message-counting"],"The next message should be **"..storagedata["CountChannel"]["Count"].."** characters long.\n\nProgress to 2000:\n"..progressbar.." "..round((storagedata["CountChannel"]["Count"]-1)/20,2).."%"..deletenotice)
+                    if message then storagedata["CountChannel"]["CountMessage"] = message.id end
                 end
             end
         end
     end
 end)()
 
-coroutine.wrap(function() --Queue update message loop
+coroutine.wrap(function() --Queue update message loop and Resize channel loop
     if not storagedata["ExclusiveChannel"]["AdmitTime"] then
         storagedata["ExclusiveChannel"]["AdmitTime"] = os.time()+((QueueInterval*3600)-(os.time()%(QueueInterval*3600)))
     end
@@ -656,6 +656,9 @@ coroutine.wrap(function() --Queue update message loop
             admitNewUser()
         end
         updateQueue()
+
+        storagedata["ResizeChannel"] = {math.floor(1 + (ResizeMax - 1)*(math.random()^ResizeBias)),math.floor(1 + (ResizeMax - 1)*(math.random()^ResizeBias))}
+        Channels["resized-images"]:setTopic(storagedata["ResizeChannel"][1].." x "..storagedata["ResizeChannel"][2])
     end
 end)()
 
@@ -1797,7 +1800,7 @@ local function NewMessage(message)
         end
         
         --Delete messages containing special characters, morse code, stickers/embeds, or uses singular letters
-            if message.content == "" and channel ~= Channels["images"] then
+            if message.content == "" and channel ~= Channels["images"] and channel ~= Channels["resized-images"] then
                 message:delete()
                 send(user.id,"I can't disable stickers but I can delete them.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The message you tried to send contains a sticker. This is a bypass around implemented filters.\n\nYour message was deleted."})
             end
@@ -2098,6 +2101,26 @@ local function NewMessage(message)
                 else
                     send(user.id,"I mean, you were close.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The image you tried to send was **"..round(kilobytes,3).." kilobytes**. #images only allows images under 2 kilobytes.\n\nThis website by Velleda can make it the right size: `image-compressor.glitch.me`"})
                 end
+            end
+            return
+        end
+
+        if channel == Channels["resized-images"] then
+            if message.content ~= "" then
+                message:delete()
+                send(user.id,"Sorry, can't have any text in your message.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The message you tried to send contains text. #resized-images only allows images."})
+                return
+            elseif #message.attachments > 1 then
+                message:delete()
+                send(user.id,"Sorry, it's just difficult to identify each attachment.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The message you tried to send contains more than one attachment. #resized-images only allows one per message."})
+                return
+            elseif not message.attachment.height then
+                message:delete()
+                send(user.id,"Uhhh, yea, not an image.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The attachment you tried to send is not an image. #resized-images only allows images."})
+                return
+            elseif message.attachment.height ~= storagedata["ResizeChannel"][2] or message.attachment.width ~= storagedata["ResizeChannel"][1] then
+                message:delete()
+                send(user.id,"We can't be having improperly sized images here.",{["Title"]="Message Deleted",["Color"]={255,0,0},["Text"]="The image you tried to send was **"..message.attachment.width.." x "..message.attachment.height.."**. Your image must be "..storagedata["ResizeChannel"][1].." x "..storagedata["ResizeChannel"][2].."."})
             end
             return
         end
